@@ -1,5 +1,24 @@
 #!/usr/bin/make -f
 
+include scripts/makefiles/e2e.mk
+include scripts/makefiles/hl.mk
+
+.DEFAULT_GOAL := help
+help:
+	@echo "Available top-level commands:"
+	@echo ""
+	@echo "Usage:"
+	@echo "    make [command]"
+	@echo ""
+	@echo "  make build                 Build Bitsong node binary"
+	@echo "  make install               Install Bitsong node binary"
+	@echo "  make hl                    Show available docker commands (via Strangelove's Heighliner Tooling)"
+	@echo "  make e2e                   Show available e2e commands"
+	@echo ""
+	@echo "Run 'make [subcommand]' to see the available commands for each subcommand."
+
+
+
 APP_DIR = ./app
 BINDIR ?= $(GOPATH)/bin
 
