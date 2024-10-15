@@ -28,9 +28,6 @@ mytestnet
 coverage.txt
 profile.out
 
-# heighliner
-heighliner
-
 # Vagrant
 .vagrant/
 *.box
