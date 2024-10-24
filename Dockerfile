@@ -42,4 +42,3 @@ EXPOSE 1317
 
 #ENTRYPOINT ["/bin/bash"]
 ENTRYPOINT ["bitsongd"]
-CMD [ "start" ]
