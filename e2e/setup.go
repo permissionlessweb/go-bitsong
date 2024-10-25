@@ -98,12 +98,12 @@ func CreateThisBranchChain(t *testing.T, numVals, numFull int) []ibc.Chain {
 func CreateChainWithCustomConfig(t *testing.T, numVals, numFull int, config ibc.ChainConfig) []ibc.Chain {
 	cf := interchaintest.NewBuiltinChainFactory(zaptest.NewLogger(t), []*interchaintest.ChainSpec{
 		{
-			Name:        "bitsong",
-			ChainName:   "bitsong",
-			Version:     config.Images[0].Version,
-			ChainConfig: config,
-			// NumValidators: &numVals,
-			// NumFullNodes:  &numFull,
+			Name:          "bitsong",
+			ChainName:     "bitsong",
+			Version:       config.Images[0].Version,
+			ChainConfig:   config,
+			NumValidators: &numVals,
+			NumFullNodes:  &numFull,
 		},
 	})
 
