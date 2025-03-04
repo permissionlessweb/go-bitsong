@@ -6,17 +6,26 @@ import (
 	"fmt"
 	"log"
 
+	"cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
 	v020 "github.com/bitsongofficial/go-bitsong/app/upgrades/v020"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
-// ExportAppStateAndValidators exports the state of the application for a genesis
-// file.
+// Custom Export Debugging Our Current KvStores:
+// - x/distribution:
+//   - delegator starting info:
+//   - validator slash event:
+//   - historical reference:
+//
+// x/slashing:
+//   - validator signing info:
+//   - historical reference:
 func (app *BitsongApp) ExportAppStateAndValidators(
 	forZeroHeight bool, jailAllowedAddrs []string,
 ) (servertypes.ExportedApp, error) {
@@ -71,101 +80,33 @@ func (app *BitsongApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddr
 		allowedAddrsMap[addr] = true
 	}
 
-	/* Just to be safe, assert the invariants on current state. */
-	// app.AppKeepers.CrisisKeeper.AssertInvariants(ctx)
+	// /*  ensure no delegations exist without starting info*/
+	// dels, _ := app.AppKeepers.StakingKeeper.GetAllDelegations(ctx)
+	// for _, del := range dels {
+	// 	valAddr := sdk.ValAddress(del.GetValidatorAddr())
+	// 	// delAddr := sdk.AccAddress(del.GetDelegatorAddr())
+	// 	has, _ := app.AppKeepers.DistrKeeper.HasDelegatorStartingInfo(ctx, valAddr, sdk.AccAddress(del.GetDelegatorAddr()))
 
-	/* Handle fee distribution state. */
-	// app.AppKeepers.StakingKeeper.IterateValidators(ctx, func(_ int64, val stakingtypes.ValidatorI) (stop bool) {
-	// 	valAddr := sdk.ValAddress(val.GetOperator())
-	// 	dels, _ := app.AppKeepers.StakingKeeper.GetValidatorDelegations(ctx, valAddr)
-	// 	for _, del := range dels {
-	// 		fmt.Println(fmt.Printf("del_info: %q %v", val.GetOperator(), del.GetDelegatorAddr()))
+	// 	if !has {
+	// 		// TODO: print no delegator starting info to csv file
 
-	// 		// if del.Shares.LTE(math.LegacyZeroDec()) {
-	// 		// 	ctx.Logger().Info(fmt.Sprintf("removing negative delegations: %q %v", val.GetOperator(), del.GetDelegatorAddr()))
-	// 		// 	// remove reward information from distribution store
-	// 		// 	has, _ := app.AppKeepers.DistrKeeper.HasDelegatorStartingInfo(ctx, valAddr, sdk.AccAddress(del.DelegatorAddress))
-	// 		// 	if has {
-	// 		// 		app.AppKeepers.DistrKeeper.DeleteDelegatorStartingInfo(ctx, valAddr, sdk.AccAddress(del.DelegatorAddress))
-	// 		// 	}
-	// 		// 	// remove delegation from staking store
-	// 		// 	if err := app.AppKeepers.StakingKeeper.RemoveDelegation(ctx, del); err != nil {
-	// 		// 		panic(err)
-	// 		// 	}
-	// 		// } else {
-	// 		notHas, _ := app.AppKeepers.DistrKeeper.HasDelegatorStartingInfo(ctx, valAddr, sdk.AccAddress(del.GetDelegatorAddr()))
-	// 		if !notHas {
-	// 			panic(distrtypes.ErrEmptyDelegationDistInfo)
-	// 		}
-	// 		endingPeriod, _ := app.AppKeepers.DistrKeeper.IncrementValidatorPeriod(ctx, val)
-	// 		rewardsRaw, patched := v020.CustomCalculateDelegationRewards(ctx, &app.AppKeepers, val, del, endingPeriod)
-	// 		outstanding, _ := app.AppKeepers.DistrKeeper.GetValidatorOutstandingRewardsCoins(ctx, valAddr)
-
-	// 		if patched {
-	// 			ctx.Logger().Info("~=~=~=~=~~=~=~=~=~~=~=~=~=~~=~=~=~=~~=~=~=~=~~=~=~=~=~~=~=~=~=~~=~=~=~=~~=~=~=~=~~=~=~=~=~")
-	// 			ctx.Logger().Info(fmt.Sprintf("PATCHED: %q %v", val.GetOperator(), del.GetDelegatorAddr()))
-	// 			err := v020.V018ManualDelegationRewardsPatch(ctx, rewardsRaw, outstanding, &app.AppKeepers, val, del, endingPeriod)
-	// 			if err != nil {
-	// 				panic(err)
-	// 			}
-	// 		}
 	// 	}
-	// 	// }
 
-	// 	return false
-	// })
-
-	/*  ensure no delegations exist without starting info*/
-	dels, _ := app.AppKeepers.StakingKeeper.GetAllDelegations(ctx)
-	for _, del := range dels {
-		valAddr := sdk.ValAddress(del.GetValidatorAddr())
-		// delAddr := sdk.AccAddress(del.GetDelegatorAddr())
-		has, _ := app.AppKeepers.DistrKeeper.HasDelegatorStartingInfo(ctx, valAddr, sdk.AccAddress(del.GetDelegatorAddr()))
-		// if valAddr.String() == "bitsongvaloper1jsaud5d8weze74a5e5w9ercxamtglg9wapc43m" && delAddr.String() == "bitsong1qqqj207k07465gu4s7e4d3lr39as9dxxtlwzum" {
-		// 	// calculate rewards
-		// 	val, _ := app.AppKeepers.StakingKeeper.Validator(ctx, valAddr)
-		// 	endingPeriod, err := app.AppKeepers.DistrKeeper.IncrementValidatorPeriod(ctx, val)
-		// 	rewardsRaw, _ := v020.CustomCalculateDelegationRewards(ctx, &app.AppKeepers, val, del, endingPeriod)
-		// 	outstanding, err := app.AppKeepers.DistrKeeper.GetValidatorOutstandingRewardsCoins(ctx, sdk.ValAddress(del.GetValidatorAddr()))
-
-		// 	err = v020.V018ManualDelegationRewardsPatch(ctx, rewardsRaw, outstanding, &app.AppKeepers, val, del, endingPeriod)
-		// 	if err != nil {
-		// 		panic(err)
-		// 	}
-		// }
-		if !has {
-			// val, _ := app.AppKeepers.StakingKeeper.GetValidator(ctx, valAddr)
-			// if val.Jailed {
-			// 	panic("val is not jailed")
-			// } else {
-			// 	app.AppKeepers.DistrKeeper.SetDelegatorStartingInfo(ctx, valAddr, delAddr, distrtypes.NewDelegatorStartingInfo(0, math.LegacyZeroDec(), uint64(ctx.BlockHeight())))
-			// }
-			// if delegation starting info does not exist, we assume & assert:
-			// - validator is jailed
-			// if this is the case, then we must:
-			// - inject dummy delegator starting info
-			// - manually claim rewards for delegator, using the patch
-			// continue
-			// panic(distrtypes.ErrEmptyDelegationDistInfo)
-
-		}
-
-		/* ensure all rewards are patched */
-		val, _ := app.AppKeepers.StakingKeeper.Validator(ctx, valAddr)
-		endingPeriod, _ := app.AppKeepers.DistrKeeper.IncrementValidatorPeriod(ctx, val)
-		if val.GetTokens().IsNil() {
-			/* will error if still broken */
-			fmt.Println(fmt.Printf("delegator: %q", del.DelegatorAddress))
-			fmt.Println(fmt.Printf("validator: %q", del.ValidatorAddress))
-			fmt.Println(fmt.Printf(" del.Shares: %q", del.Shares))
-			fmt.Println(fmt.Printf("  val.GetStatus(): %q", val.GetStatus()))
-			fmt.Println(fmt.Print(val.IsBonded()))
-			fmt.Println(fmt.Printf(" val.GetTokens(): %q", val.GetTokens()))
-
-		} else {
-			app.AppKeepers.DistrKeeper.CalculateDelegationRewards(ctx, val, del, endingPeriod)
-		}
-	}
+	// 	/* ensure all rewards are patched */
+	// 	val, _ := app.AppKeepers.StakingKeeper.Validator(ctx, valAddr)
+	// 	endingPeriod, _ := app.AppKeepers.DistrKeeper.IncrementValidatorPeriod(ctx, val)
+	// 	if val.GetTokens().IsNil() {
+	// 		/* will error if still broken */
+	// 		fmt.Println(fmt.Printf("delegator: %q", del.DelegatorAddress))
+	// 		fmt.Println(fmt.Printf("validator: %q", del.ValidatorAddress))
+	// 		fmt.Println(fmt.Printf(" del.Shares: %q", del.Shares))
+	// 		fmt.Println(fmt.Printf("  val.GetStatus(): %q", val.GetStatus()))
+	// 		fmt.Println(fmt.Printf(" val.GetTokens(): %q", val.GetTokens()))
+	// 		fmt.Println(fmt.Print(val.IsBonded()))
+	// 	} else {
+	// 		app.AppKeepers.DistrKeeper.CalculateDelegationRewards(ctx, val, del, endingPeriod)
+	// 	}
+	// }
 
 	// withdraw all validator commission
 	app.AppKeepers.StakingKeeper.IterateValidators(ctx, func(_ int64, val stakingtypes.ValidatorI) (stop bool) {
@@ -178,7 +119,7 @@ func (app *BitsongApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddr
 	})
 
 	// withdraw all delegator rewards
-	dels, _ = app.AppKeepers.StakingKeeper.GetAllDelegations(ctx)
+	dels, _ := app.AppKeepers.StakingKeeper.GetAllDelegations(ctx)
 	for _, delegation := range dels {
 		valAddr, err := sdk.ValAddressFromBech32(delegation.ValidatorAddress)
 		delAddr := sdk.AccAddress(delegation.DelegatorAddress)
@@ -246,9 +187,6 @@ func (app *BitsongApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddr
 			panic(err)
 		}
 		refCount := app.AppKeepers.DistrKeeper.GetValidatorHistoricalReferenceCount(ctx)
-		// fmt.Println(fmt.Printf("delegator: %q", del.DelegatorAddress))
-		// fmt.Println(fmt.Printf("validator: %q", del.ValidatorAddress))
-		// fmt.Println(fmt.Printf("refCount: %q", refCount))
 
 		// omit specific jailed vals
 		if refCount != uint64(0) {
@@ -280,38 +218,113 @@ func (app *BitsongApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddr
 		return false
 	})
 
-	// Iterate through validators by power descending, reset bond heights, and
-	// update bond intra-tx counters.
-	store := ctx.KVStore(app.keys[stakingtypes.StoreKey])
-	iter := storetypes.KVStoreReversePrefixIterator(store, stakingtypes.ValidatorsKey)
+	// x/staking store assertion:
+	// 		- Iterate through validators by power descending, reset bond heights
+	// 		- update bond intra-tx counters
+	xStake := ctx.KVStore(app.keys[stakingtypes.StoreKey])
+	stakeIter := storetypes.KVStoreReversePrefixIterator(xStake, stakingtypes.ValidatorsKey)
 	deletedCounter := int16(0)
 	notDeletedCounter := int16(0)
 
-	for ; iter.Valid(); iter.Next() {
-		key := iter.Key()[1:]
+	for ; stakeIter.Valid(); stakeIter.Next() {
+		key := stakeIter.Key()[1:]
 		addr := sdk.ValAddress(key)
+		// confirm by sdk.ValAddr
 		validator, err := app.AppKeepers.StakingKeeper.GetValidator(ctx, addr)
 		if err != nil {
 			ctx.Logger().Info(fmt.Sprintf("expected validator, not found: %q. removing key from store...", addr.String()))
-			store.Delete(key)
+			//TODO:  print to removed validaotr file before deleting in csv format with key and index in store
+			xStake.Delete(key)
 			deletedCounter++
 			continue
 		}
-
 		validator.UnbondingHeight = 0
 		if applyAllowedAddrs && !allowedAddrsMap[addr.String()] {
 			validator.Jailed = true
 		}
 
+		// assert validator signing info exists in x/slashing
+		valSignInfo, err := app.AppKeepers.SlashingKeeper.GetValidatorSigningInfo(ctx, validator.ConsensusPubkey.Value)
+		if err != nil {
+			// TODO: improve err
+			panic(err)
+		}
+
+		fmt.Printf("valSignInfo: %v\n", valSignInfo)
+
+		// iterate & assert delegations for this validators keyfrom smallest delegations first
+		delpre := stakingtypes.GetDelegationsByValPrefixKey(addr)
+		delIter := storetypes.KVStoreReversePrefixIterator(xStake, storetypes.PrefixEndBytes(delpre))
+		for ; delIter.Valid(); delIter.Next() {
+			// delKey
+			valAddr, delAddr, err := stakingtypes.ParseDelegationsByValKey(delIter.Key())
+			if err != nil {
+				panic(err)
+			}
+
+			// get from keeper
+			del, err := app.AppKeepers.StakingKeeper.GetDelegation(ctx, delAddr, valAddr)
+			if err != nil {
+				// TODO: improve err
+				panic(err)
+			}
+			fmt.Printf("del: %v\n", del)
+			if del.Shares == math.LegacyZeroDec() {
+				// TODO: remove delegation to resolve crisis error
+			}
+
+			endingPeriod, _ := app.AppKeepers.DistrKeeper.IncrementValidatorPeriod(ctx, validator)
+			completionTime := ctx.BlockHeader().Time // current time is unbonding duration, allowing for immediate claim
+			_, err = app.AppKeepers.DistrKeeper.CalculateDelegationRewards(ctx, validator, del, endingPeriod)
+			if err != nil {
+				rewardsRaw, _ := v020.CustomCalculateDelegationRewards(ctx, &app.AppKeepers, validator, del, endingPeriod)
+
+				outstanding, err := app.AppKeepers.DistrKeeper.GetValidatorOutstandingRewardsCoins(ctx, sdk.ValAddress(del.GetValidatorAddr()))
+				if err != nil {
+					panic(err)
+				}
+
+				err = v020.V018ManualDelegationRewardsPatch(ctx, rewardsRaw, outstanding, &app.AppKeepers, validator, del, endingPeriod)
+				if err != nil {
+					panic(err)
+				}
+
+				// todo: if delegator from one of two broken vals, manually unbond from delegator to completely remove from store
+				ubd, errorubd := app.AppKeepers.StakingKeeper.SetUnbondingDelegationEntry(ctx, delAddr, valAddr, ctx.BlockHeight(), completionTime, math.Int(del.GetShares()))
+				// get validator
+				if errorubd != nil {
+					panic(errorubd)
+				}
+				fmt.Printf("ubd: %v\n", ubd)
+			}
+			ubd, errorubd := app.AppKeepers.StakingKeeper.SetUnbondingDelegationEntry(ctx, delAddr, valAddr, ctx.BlockHeight(), completionTime, math.Int(del.GetShares()))
+			_, err = app.AppKeepers.StakingKeeper.CompleteUnbonding(ctx, delAddr, valAddr)
+			// get validator
+			if errorubd != nil {
+				panic(errorubd)
+			}
+			fmt.Printf("ubd: %v\n", ubd)
+
+		}
+		// TODO: if validator is one of broken ones, we expect all delegations to have been unbonded, so we can safely remove validator from all store
+
 		app.AppKeepers.StakingKeeper.SetValidator(ctx, validator)
 		notDeletedCounter++
 	}
 
-	iter.Close()
-	/* Handle slashing state. */
+	stakeIter.Close()
 
-	fmt.Println(fmt.Printf("notdeleted validator store key count: %q", notDeletedCounter))
-	fmt.Println(fmt.Printf("deleted validator store key count: %q", deletedCounter))
+	// x/slashing store assertion
+
+	// x/distr store assertion
+	xDistr := ctx.KVStore(app.keys[distrtypes.StoreKey])
+	distrIter := storetypes.KVStoreReversePrefixIterator(xDistr, stakingtypes.ValidatorsKey)
+	for ; distrIter.Valid(); distrIter.Next() {
+
+	}
+	distrIter.Close()
+
+	/* Handle slashing state. */
 
 	// reset start height on signing infos
 	app.AppKeepers.SlashingKeeper.IterateValidatorSigningInfos(
@@ -322,26 +335,9 @@ func (app *BitsongApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddr
 			return false
 		},
 	)
+
+	// /* Just to be safe, assert the invariants on current state. */
+	app.AppKeepers.CrisisKeeper.AssertInvariants(ctx)
+	// https://www.mintscan.io/bitsong/address/bitsong1j9tycazs8af33xgezncmhllap8gq0rpauwv7s0
+
 }
-
-// /* remove any remaining validator keys from store.This runs after we retrieve all current validators from staking keeper store,
-//  preventing us from deleting active validators store. */
-// store := sdkCtx.KVStore(k.GetKey(stakingtypes.StoreKey))
-// iter := storetypes.KVStoreReversePrefixIterator(store, stakingtypes.ValidatorsKey)
-// counter := int16(0)
-
-// for ; iter.Valid(); iter.Next() {
-// 	key := iter.Key()[1:]
-// 	addr := sdk.ValAddress(key)
-// 	validator, err := k.StakingKeeper.GetValidator(sdkCtx, addr)
-// 	if err != nil {
-// 		sdkCtx.Logger().Info(fmt.Sprintf("expected validator, not found: %q", addr.String()))
-// 		store.Delete(key)
-// 		counter++
-// 		continue
-// 	} else {
-// 		sdkCtx.Logger().Info("-==-=-=-==---=-=-=-=-=--=-=-=-")
-// 		sdkCtx.Logger().Info(fmt.Sprintf("found: %q", validator.OperatorAddress))
-// 	}
-// 	counter++
-// }
