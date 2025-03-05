@@ -36,11 +36,6 @@ func CustomExportCmd(appExporter servertypes.AppExporter, defaultNodeHome string
 			serverCtx := server.GetServerContextFromCmd(cmd)
 			config := serverCtx.Config
 
-			// newChainID := args[0]
-			// newOperatorAddress := args[1]
-			// serverCtx.Viper.Set(server.KeyNewChainID, newChainID)
-			// serverCtx.Viper.Set(server.KeyNewOpAddr, newOperatorAddress)
-
 			// Set testnet keys to be used by the application.
 			// This is done to prevent changes to existing start API.
 			serverCtx.Viper.Set(server.KeyIsTestnet, true)

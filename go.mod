@@ -16,7 +16,7 @@ require (
 	cosmossdk.io/x/upgrade v0.1.4
 	github.com/CosmWasm/wasmd v0.53.2
 	github.com/CosmWasm/wasmvm/v2 v2.1.5
-	github.com/cometbft/cometbft v0.38.16
+	github.com/cometbft/cometbft v0.38.17
 	github.com/cosmos/cosmos-db v1.1.1
 	github.com/cosmos/cosmos-proto v1.0.0-beta.5
 	github.com/cosmos/cosmos-sdk v0.50.11
@@ -233,9 +233,11 @@ replace (
 
 )
 
-// run: git clone -b v0.38.16-debug https://github.com/permissionlessweb/cometbft
+// run: git clone -b v0.38.17.logs https://github.com/permissionlessweb/cometbft
 //
 // uncomment:
-// replace github.com/cometbft/cometbft =>  ./cometbft
+// replace github.com/cometbft/cometbft => ./cometbft
 
+// run: go mod tidy && make install
+//
 exclude github.com/gogo/protobuf v1.3.3
