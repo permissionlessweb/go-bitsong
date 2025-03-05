@@ -701,7 +701,7 @@ func InitBitsongAppForTestnet(app *BitsongApp, newValAddr bytes.HexBytes, newVal
 		tmos.Exit(err.Error())
 	}
 	valConsensusAddr := sdk.ConsAddress(newValConsAddrBytes)
-	fmt.Printf("valConsensusAddr.String(): %v\n", valConsensusAddr.String())
+	fmt.Printf("valConsensusAddr: %v\n", valConsensusAddr.String())
 
 	// Remove all validators from power store
 	stakingKey := app.GetKey(stakingtypes.ModuleName)
@@ -749,7 +749,7 @@ func InitBitsongAppForTestnet(app *BitsongApp, newValAddr bytes.HexBytes, newVal
 	if err != nil {
 		panic(err)
 	}
-	// grab val from store with types.ValidatorsKey for KvStore
+	// ASSERTIONS: val from store with types.ValidatorsKey for KvStore
 	vals, err := app.AppKeepers.StakingKeeper.GetAllValidators(ctx)
 	if err != nil {
 		panic(err)
@@ -759,7 +759,6 @@ func InitBitsongAppForTestnet(app *BitsongApp, newValAddr bytes.HexBytes, newVal
 		valConsAddr, err := val.GetConsAddr()
 		if err != nil {
 			panic(err)
-
 		}
 		valConsensusAddr := sdk.ConsAddress(valConsAddr)
 		fmt.Printf("valConsensusAddr: %v\n", valConsensusAddr.String())

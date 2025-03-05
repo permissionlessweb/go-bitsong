@@ -30,6 +30,7 @@ import (
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/libs/bytes"
 	tmcli "github.com/cometbft/cometbft/libs/cli"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
 
 	// rosettaCmd "cosmossdk.io/tools/rosetta/cmd"
 
@@ -277,12 +278,14 @@ func initRootCmd(rootCmd *cobra.Command, encodingConfig params.EncodingConfig) {
 		queryCommand(),
 		txCommand(),
 		keys.Commands(),
+		CustomExportCmd(customAppExport, bitsong.DefaultNodeHome),
 	)
 }
 
 func addModuleInitFlags(startCmd *cobra.Command) {
 	crisis.AddModuleInitFlags(startCmd)
 	wasm.AddModuleInitFlags(startCmd)
+
 }
 
 // genesisCommand builds genesis-related `simd genesis` command. Users may provide application specific commands as a parameter
@@ -454,6 +457,71 @@ func appExport(
 	}
 
 	return wasmApp.ExportAppStateAndValidators(forZeroHeight, jailAllowedAddrs)
+}
+
+// customAppExport creates a new wasm app (optionally at a given height) and exports state.
+func customAppExport(
+	logger log.Logger,
+	db cosmosdb.DB,
+	traceStore io.Writer,
+	height int64,
+	forZeroHeight bool,
+	jailAllowedAddrs []string,
+	appOpts servertypes.AppOptions,
+	modulesToExport []string,
+) (servertypes.ExportedApp, error) {
+	var wasmApp *bitsong.BitsongApp
+	homePath, ok := appOpts.Get(flags.FlagHome).(string)
+	if !ok || homePath == "" {
+		return servertypes.ExportedApp{}, errors.New("application home is not set")
+	}
+
+	viperAppOpts, ok := appOpts.(*viper.Viper)
+	if !ok {
+		return servertypes.ExportedApp{}, errors.New("appOpts is not viper.Viper")
+	}
+
+	// get test-operator & chain-id from flags
+	// get chain-id
+
+	chainId := cast.ToString(viperAppOpts.Get("test-chain-id"))
+	newOperatorAddress, ok := viperAppOpts.Get(server.KeyNewOpAddr).(string)
+	if !ok {
+		panic("newOperatorAddress is not of type string")
+	}
+
+	newValAddr, ok := viperAppOpts.Get(server.KeyNewValAddr).(bytes.HexBytes)
+	if !ok {
+		panic("newValAddr is not of type bytes.HexBytes")
+	}
+
+	newValPubKey, ok := appOpts.Get(server.KeyUserPubKey).(ed25519.PubKey)
+	if !ok {
+		panic("newValPubKey is not of type crypto.PubKey")
+	}
+
+	// overwrite the FlagInvCheckPeriod
+	viperAppOpts.Set(server.FlagInvCheckPeriod, 1)
+	appOpts = viperAppOpts
+
+	var emptyWasmOpts []wasmkeeper.Option
+	wasmApp = bitsong.NewBitsongApp(
+		logger,
+		db,
+		traceStore,
+		height == -1,
+		cast.ToString(appOpts.Get(flags.FlagHome)),
+		appOpts,
+		emptyWasmOpts,
+	)
+
+	if height != -1 {
+		if err := wasmApp.LoadHeight(height); err != nil {
+			return servertypes.ExportedApp{}, err
+		}
+	}
+
+	return wasmApp.CustomExportAppStateAndValidators(forZeroHeight, jailAllowedAddrs, newOperatorAddress, chainId, newValPubKey, newValAddr)
 }
 func autoCliOpts(initClientCtx client.Context, tempApp *bitsong.BitsongApp) autocli.AppOptions {
 	modules := make(map[string]appmodule.AppModule, 0)
