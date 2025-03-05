@@ -13,6 +13,7 @@ import (
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/server"
+
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	"github.com/cosmos/cosmos-sdk/version"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
@@ -30,19 +31,19 @@ func CustomExportCmd(appExporter servertypes.AppExporter, defaultNodeHome string
 	cmd := &cobra.Command{
 		Use:   "custom-export",
 		Short: "Export state to JSON, for a testnet with cosmwasm state",
-		Args:  cobra.ExactArgs(2),
+		Args:  cobra.NoArgs, // 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			serverCtx := server.GetServerContextFromCmd(cmd)
 			config := serverCtx.Config
 
-			newChainID := args[0]
-			newOperatorAddress := args[1]
+			// newChainID := args[0]
+			// newOperatorAddress := args[1]
+			// serverCtx.Viper.Set(server.KeyNewChainID, newChainID)
+			// serverCtx.Viper.Set(server.KeyNewOpAddr, newOperatorAddress)
 
 			// Set testnet keys to be used by the application.
 			// This is done to prevent changes to existing start API.
 			serverCtx.Viper.Set(server.KeyIsTestnet, true)
-			serverCtx.Viper.Set(server.KeyNewChainID, newChainID)
-			serverCtx.Viper.Set(server.KeyNewOpAddr, newOperatorAddress)
 
 			homeDir, _ := cmd.Flags().GetString(flags.FlagHome)
 			config.SetRoot(homeDir)

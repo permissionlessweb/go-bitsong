@@ -2,10 +2,8 @@ package app
 
 import (
 	abci "github.com/cometbft/cometbft/abci/types"
-	"github.com/cometbft/cometbft/libs/bytes"
 
 	"github.com/cosmos/cosmos-sdk/codec"
-	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
 	"github.com/cosmos/cosmos-sdk/server/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -39,7 +37,8 @@ type CosmosApp interface {
 
 	// ExportAppStateAndValidators Exports the state of the application for a genesis file.
 	CustomExportAppStateAndValidators(
-		forZeroHeight bool, jailAllowedAddrs []string, newchainId, operatorAddr string, newPubkey ed25519.PubKey, valAddr bytes.HexBytes,
+		forZeroHeight bool, jailAllowedAddrs []string,
+		//  newchainId, operatorAddr string, newPubkey ed25519.PubKey, valAddr bytes.HexBytes,
 	) (types.ExportedApp, error)
 
 	// ModuleAccountAddrs All the registered module account addreses.

@@ -26,11 +26,10 @@ import (
 	"github.com/spf13/viper"
 
 	"cosmossdk.io/log"
-	tmcfg "github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/libs/bytes"
 	tmcli "github.com/cometbft/cometbft/libs/cli"
-	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
 
 	// rosettaCmd "cosmossdk.io/tools/rosetta/cmd"
 
@@ -146,7 +145,7 @@ func NewRootCmd() (*cobra.Command, params.EncodingConfig) {
 			}
 
 			customAppTemplate, customAppConfig := initAppConfig()
-			customTMConfig := tmcfg.DefaultConfig()
+			customTMConfig := cmtcfg.DefaultConfig()
 			// add customizations to tendermint configuration here
 			// customTMConfig.P2P.MaxNumInboundPeers = 100
 			// customTMConfig.P2P.MaxNumOutboundPeers = 40
@@ -484,21 +483,21 @@ func customAppExport(
 	// get test-operator & chain-id from flags
 	// get chain-id
 
-	chainId := cast.ToString(viperAppOpts.Get("test-chain-id"))
-	newOperatorAddress, ok := viperAppOpts.Get(server.KeyNewOpAddr).(string)
-	if !ok {
-		panic("newOperatorAddress is not of type string")
-	}
+	// chainId := cast.ToString(viperAppOpts.Get("test-chain-id"))
+	// newOperatorAddress, ok := viperAppOpts.Get(server.KeyNewOpAddr).(string)
+	// if !ok {
+	// 	panic("newOperatorAddress is not of type string")
+	// }
 
-	newValAddr, ok := viperAppOpts.Get(server.KeyNewValAddr).(bytes.HexBytes)
-	if !ok {
-		panic("newValAddr is not of type bytes.HexBytes")
-	}
+	// newValAddr, ok := viperAppOpts.Get(server.KeyNewValAddr).(bytes.HexBytes)
+	// if !ok {
+	// 	panic("newValAddr is not of type bytes.HexBytes")
+	// }
 
-	newValPubKey, ok := appOpts.Get(server.KeyUserPubKey).(ed25519.PubKey)
-	if !ok {
-		panic("newValPubKey is not of type crypto.PubKey")
-	}
+	// newValPubKey, ok := appOpts.Get(server.KeyUserPubKey).(ed25519.PubKey)
+	// if !ok {
+	// 	panic("newValPubKey is not of type crypto.PubKey")
+	// }
 
 	// overwrite the FlagInvCheckPeriod
 	viperAppOpts.Set(server.FlagInvCheckPeriod, 1)
@@ -521,7 +520,8 @@ func customAppExport(
 		}
 	}
 
-	return wasmApp.CustomExportAppStateAndValidators(forZeroHeight, jailAllowedAddrs, newOperatorAddress, chainId, newValPubKey, newValAddr)
+	return wasmApp.CustomExportAppStateAndValidators(forZeroHeight, jailAllowedAddrs) // newOperatorAddress, chainId, newValPubKey, newValAddr,
+
 }
 func autoCliOpts(initClientCtx client.Context, tempApp *bitsong.BitsongApp) autocli.AppOptions {
 	modules := make(map[string]appmodule.AppModule, 0)
