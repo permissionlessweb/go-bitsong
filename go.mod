@@ -230,6 +230,12 @@ replace (
 	// dragonberry
 	github.com/confio/ics23/go => github.com/cosmos/cosmos-sdk/ics23/go v0.8.0
 	github.com/syndtr/goleveldb => github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
+
 )
+
+// run: git clone -b v0.38.16 github.com/cometbft/cometbft
+//
+// uncomment:
+// replace github.com/cometbft/cometbft => ./cometbft
 
 exclude github.com/gogo/protobuf v1.3.3

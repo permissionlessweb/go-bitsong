@@ -18,26 +18,33 @@ import (
 )
 
 // ConditionalJSON represents a JSON object for logging conditionals
+
 type ConditionalJSON struct {
-	NoStartingInfo      []NoStartingInfo     `json:"no_starting_info"`
-	ZeroRewards         []ZeroRewards        `json:"zero_rewards"`
-	ZeroTokenValidators []ZeroTokenValidator `json:"zero_token_validators"`
+	NoStartingInfo           []NoStartingInfo     `json:"no_starting_info"` // todo: add total count
+	NoStartingInfoCount      int                  `json:"no_starting_info_count"`
+	ZeroRewards              []ZeroRewards        `json:"zero_rewards"` // todo: add total count
+	ZeroRewardsCount         int                  `json:"zero_rewards_count"`
+	ZeroTokenValidators      []ZeroTokenValidator `json:"zero_token_validators"` // todo: add total count
+	ZeroTokenValidatorsCount int                  `json:"zero_token_validators_count"`
 }
 
 type NoStartingInfo struct {
 	ValidatorAddress string `json:"validator_address"`
 	DelegatorAddress string `json:"delegator_address"`
+	Power            string `json:"power"`
 	KVStoreKey       string `json:"kv_store_key"`
 }
 
 type ZeroRewards struct {
 	ValidatorAddress string `json:"validator_address"`
 	DelegatorAddress string `json:"delegator_address"`
+	Power            string `json:"power"`
 	KVStoreKey       string `json:"kv_store_key"`
 }
 
 type ZeroTokenValidator struct {
 	OperatorAddress string `json:"operator_address"`
+	Power           string `json:"power"`
 	KVStoreKey      string `json:"kv_store_key"`
 }
 
@@ -87,6 +94,11 @@ func (app *BitsongApp) ExportAppStateAndValidators(
 //
 //	in favour of export at a block height
 func (app *BitsongApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddrs []string) {
+	condJSON := ConditionalJSON{
+		NoStartingInfo:      make([]NoStartingInfo, 0),
+		ZeroRewards:         make([]ZeroRewards, 0),
+		ZeroTokenValidators: make([]ZeroTokenValidator, 0),
+	}
 	// applyAllowedAddrs := false
 
 	// check if there is a allowed address list
@@ -215,13 +227,6 @@ func (app *BitsongApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddr
 		panic(err)
 	}
 
-	// Initialize the ConditionalJSON object
-	condJSON := ConditionalJSON{
-		NoStartingInfo:      make([]NoStartingInfo, 0),
-		ZeroRewards:         make([]ZeroRewards, 0),
-		ZeroTokenValidators: make([]ZeroTokenValidator, 0),
-	}
-
 	for _, del := range dels {
 		valAddr, err := sdk.ValAddressFromBech32(del.ValidatorAddress)
 		delAddr := sdk.AccAddress(del.DelegatorAddress)
@@ -230,15 +235,16 @@ func (app *BitsongApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddr
 		}
 		has, _ := app.AppKeepers.DistrKeeper.HasDelegatorStartingInfo(ctx, valAddr, sdk.AccAddress(del.GetDelegatorAddr()))
 
+		// add count to the log file printed for nostarting infos
 		if !has {
 			// Append no starting info conditional to the ConditionalJSON object
 			condJSON.NoStartingInfo = append(condJSON.NoStartingInfo, NoStartingInfo{
 				ValidatorAddress: valAddr.String(),
 				DelegatorAddress: delAddr.String(),
+				Power:            del.Shares.String(),
 				KVStoreKey:       "", // Add the KV store key here
 			})
-			fmt.Printf("valAddr: %v\n", valAddr.String())
-			fmt.Printf("delAddr: %v\n", delAddr.String())
+			condJSON.NoStartingInfoCount = len(condJSON.NoStartingInfo)
 			// todo: continue to the next del in the iteration of dels
 		}
 
@@ -246,42 +252,38 @@ func (app *BitsongApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddr
 		if err != nil {
 			panic(err)
 		} else if val.GetTokens().IsZero() {
-			// TODO: print to file for validator with 0 tokens
-			// Append zero token validator conditional to the ConditionalJSON object
 			condJSON.ZeroTokenValidators = append(condJSON.ZeroTokenValidators, ZeroTokenValidator{
 				OperatorAddress: val.GetOperator(),
+				Power:           del.Shares.String(),
 				KVStoreKey:      "", // Add the KV store key here
 			})
-			// ctx.Logger().Info(fmt.Sprintf("val tokens for %q: %v", val.GetOperator(), val.GetTokens()))
+			condJSON.ZeroTokenValidatorsCount = len(condJSON.ZeroTokenValidators)
 		} else {
-			ctx.Logger().Info(fmt.Sprintf("val tokens for %q: %v", val.GetOperator(), val.GetTokens()))
-			ctx.Logger().Info(fmt.Sprintf("withdrawing %q: %v", val.GetOperator(), delAddr.String()))
-			fmt.Printf("del.Shares: %v\n", del.Shares)
-
 			valBz, err := app.AppKeepers.StakingKeeper.ValidatorAddressCodec().StringToBytes(val.GetOperator())
 			if err != nil {
 				panic(err)
 			}
 			rewards, err := app.AppKeepers.DistrKeeper.GetValidatorCurrentRewards(ctx, valBz)
-			endingPeriod := rewards.Period
-
-			// endingPeriod, err := app.AppKeepers.DistrKeeper.IncrementValidatorPeriod(ctx, val)
 			if err != nil {
 				panic(err)
 			}
+
+			endingPeriod := rewards.Period
+			// endingPeriod, err := app.AppKeepers.DistrKeeper.IncrementValidatorPeriod(ctx, val)
 			rewardsRaw, patched := v020.CustomCalculateDelegationRewards(ctx, &app.AppKeepers, val, del, endingPeriod)
 			outstanding, err := app.AppKeepers.DistrKeeper.GetValidatorOutstandingRewardsCoins(ctx, sdk.ValAddress(del.GetValidatorAddr()))
 			if err != nil {
 				panic(err)
 			}
 			if rewardsRaw.IsZero() {
-				// Append zero rewards conditional to the ConditionalJSON object
+				// append to log json
 				condJSON.ZeroRewards = append(condJSON.ZeroRewards, ZeroRewards{
 					ValidatorAddress: valAddr.String(),
 					DelegatorAddress: delAddr.String(),
+					Power:            del.Shares.String(),
 					KVStoreKey:       "", // Add the KV store key here
 				})
-				// TODO: continue to the next delegation
+				condJSON.ZeroRewardsCount = len(condJSON.ZeroRewards)
 
 			} else if patched {
 				err = v020.V018ManualDelegationRewardsPatch(ctx, rewardsRaw, outstanding, &app.AppKeepers, val, del, endingPeriod)

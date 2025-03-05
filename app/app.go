@@ -756,7 +756,7 @@ func InitBitsongAppForTestnet(app *BitsongApp, newValAddr bytes.HexBytes, newVal
 
 		}
 		valConsensusAddr := sdk.ConsAddress(valConsAddr)
-		fmt.Printf("valConsensusAddr: %v\n", valConsensusAddr)
+		fmt.Printf("valConsensusAddr: %v\n", valConsensusAddr.String())
 		confirmVal, err := app.AppKeepers.StakingKeeper.GetValidatorByConsAddr(ctx, valConsensusAddr)
 		if err != nil {
 			panic(err)
@@ -782,26 +782,6 @@ func InitBitsongAppForTestnet(app *BitsongApp, newValAddr bytes.HexBytes, newVal
 	if count != 1 {
 		panic("more than one validator in store ")
 	}
-
-	// for _, val := range vals {
-	// 	valConsensusPubKeyAddrBytes, err := val.GetConsAddr()
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// 	valConsensusAddr := sdk.ConsAddress(valConsensusPubKeyAddrBytes)
-	// 	newValConsPubkey, err := newVal.ConsensusPubkey.Marshal()
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// err = app.AppKeepers.StakingKeeper.SetValidatorByConsAddr(ctx, val)
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// 	fmt.Printf("newValConsPubkey: %v\n", newValConsPubkey)
-	// 	fmt.Printf("valConsensusAddr: %v\n", valConsensusAddr.String())
-	// 	count++
-	// }
 
 	err = app.AppKeepers.StakingKeeper.SetValidatorByConsAddr(ctx, newVal)
 	if err != nil {
