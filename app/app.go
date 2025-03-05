@@ -35,8 +35,10 @@ import (
 
 	storetypes "cosmossdk.io/store/types"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/bech32"
 	sigtypes "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	txmodule "github.com/cosmos/cosmos-sdk/x/auth/tx/config"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
@@ -46,9 +48,6 @@ import (
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
 	wasmlctypes "github.com/cosmos/ibc-go/modules/light-clients/08-wasm/types"
-
-	"cosmossdk.io/api/cosmos/crypto/ed25519"
-	"github.com/cosmos/cosmos-sdk/types/bech32"
 
 	reflectionv1 "cosmossdk.io/api/cosmos/reflection/v1"
 	dbm "github.com/cosmos/cosmos-db"
@@ -61,7 +60,7 @@ import (
 	"github.com/cometbft/cometbft/libs/bytes"
 	tmjson "github.com/cometbft/cometbft/libs/json"
 	tmos "github.com/cometbft/cometbft/libs/os"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
@@ -397,7 +396,7 @@ func NewBitsongApp(
 		if err := app.LoadLatestVersion(); err != nil {
 			tmos.Exit(err.Error())
 		}
-		ctx := app.BaseApp.NewUncachedContext(true, tmproto.Header{})
+		ctx := app.BaseApp.NewUncachedContext(true, cmtproto.Header{})
 		// Initialize pinned codes in wasmvm as they are not persisted there
 		if err := app.AppKeepers.WasmKeeper.InitializePinnedCodes(ctx); err != nil {
 			tmos.Exit(fmt.Sprintf("failed initialize pinned codes %s", err))
@@ -660,7 +659,7 @@ func getReflectionService() *runtimeservices.ReflectionService {
 // source: https://github.com/osmosis-labs/osmosis/blob/7b1a78d397b632247fe83f51867f319adf3a858c/app/app.go#L786
 func InitBitsongAppForTestnet(app *BitsongApp, newValAddr bytes.HexBytes, newValPubKey crypto.PubKey, newOperatorAddress, upgradeToTrigger string) *BitsongApp {
 
-	ctx := app.BaseApp.NewUncachedContext(true, tmproto.Header{})
+	ctx := app.BaseApp.NewUncachedContext(true, cmtproto.Header{})
 	pubkey := &ed25519.PubKey{Key: newValPubKey.Bytes()}
 	pubkeyAny, err := types.NewAnyWithValue(pubkey)
 	if err != nil {
@@ -737,16 +736,83 @@ func InitBitsongAppForTestnet(app *BitsongApp, newValAddr bytes.HexBytes, newVal
 	// Add our validator to power and last validators store
 	err = app.AppKeepers.StakingKeeper.SetValidator(ctx, newVal)
 	if err != nil {
-		tmos.Exit(err.Error())
+		panic(err)
 	}
+
+	err = app.AppKeepers.StakingKeeper.SetValidatorByConsAddr(ctx, newVal)
+	if err != nil {
+		panic(err)
+	}
+	// grab val from store with types.ValidatorsKey for KvStore
+	vals, err := app.AppKeepers.StakingKeeper.GetAllValidators(ctx)
+	if err != nil {
+		panic(err)
+	}
+	var count uint64
+	for _, val := range vals {
+		valConsAddr, err := val.GetConsAddr()
+		if err != nil {
+			panic(err)
+
+		}
+		valConsensusAddr := sdk.ConsAddress(valConsAddr)
+		fmt.Printf("valConsensusAddr: %v\n", valConsensusAddr)
+		confirmVal, err := app.AppKeepers.StakingKeeper.GetValidatorByConsAddr(ctx, valConsensusAddr)
+		if err != nil {
+			panic(err)
+
+		}
+		if confirmVal.OperatorAddress != val.OperatorAddress {
+			fmt.Printf("confirmVal.OperatorAddress: %v\n", confirmVal.OperatorAddress)
+			fmt.Printf("val.OperatorAddress: %v\n", val.OperatorAddress)
+			panic("operating addrs do not match!")
+		}
+
+		if confirmVal.ConsensusPubkey.String() != val.ConsensusPubkey.String() {
+			fmt.Printf("confirmVal.OperatorAddress: %v\n", confirmVal.OperatorAddress)
+			fmt.Printf("val.OperatorAddress: %v\n", val.OperatorAddress)
+			fmt.Printf("confirmVal.ConsensusPubkey: %v\n", confirmVal.ConsensusPubkey)
+			fmt.Printf("val.ConsensusPubkey: %v\n", val.ConsensusPubkey)
+			tmos.Exit("consensus pubkeys do not match!")
+
+		}
+		count++
+	}
+
+	if count != 1 {
+		panic("more than one validator in store ")
+	}
+
+	// for _, val := range vals {
+	// 	valConsensusPubKeyAddrBytes, err := val.GetConsAddr()
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// 	valConsensusAddr := sdk.ConsAddress(valConsensusPubKeyAddrBytes)
+	// 	newValConsPubkey, err := newVal.ConsensusPubkey.Marshal()
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// err = app.AppKeepers.StakingKeeper.SetValidatorByConsAddr(ctx, val)
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// 	fmt.Printf("newValConsPubkey: %v\n", newValConsPubkey)
+	// 	fmt.Printf("valConsensusAddr: %v\n", valConsensusAddr.String())
+	// 	count++
+	// }
+
 	err = app.AppKeepers.StakingKeeper.SetValidatorByConsAddr(ctx, newVal)
 	if err != nil {
 		tmos.Exit(err.Error())
 	}
+
 	err = app.AppKeepers.StakingKeeper.SetValidatorByPowerIndex(ctx, newVal)
 	if err != nil {
 		tmos.Exit(err.Error())
 	}
+
 	valAddr, err := sdk.ValAddressFromBech32(newVal.GetOperator())
 	if err != nil {
 		tmos.Exit(err.Error())
@@ -760,7 +826,6 @@ func InitBitsongAppForTestnet(app *BitsongApp, newValAddr bytes.HexBytes, newVal
 	}
 
 	// DISTRIBUTION
-	// Initialize records for this validator across all distribution stores
 	// Initialize records for this validator across all distribution stores
 	valAddr, err = sdk.ValAddressFromBech32(newVal.GetOperator())
 	if err != nil {
@@ -800,6 +865,21 @@ func InitBitsongAppForTestnet(app *BitsongApp, newValAddr bytes.HexBytes, newVal
 	// Optional Changes:
 	//
 
+	// setup vote extension
+	consensusParams, err := app.AppKeepers.ConsensusParamsKeeper.ParamsStore.Get(ctx)
+	if err != nil {
+		panic(err)
+	}
+	err = app.AppKeepers.ConsensusParamsKeeper.ParamsStore.Set(ctx, cmtproto.ConsensusParams{
+		Block:     consensusParams.Block,
+		Evidence:  consensusParams.Evidence,
+		Validator: consensusParams.Validator,
+		Version:   consensusParams.Version,
+		Abci:      &cmtproto.ABCIParams{},
+	})
+	if err != nil {
+		tmos.Exit(err.Error())
+	}
 	// GOV
 
 	newExpeditedVotingPeriod := time.Minute
