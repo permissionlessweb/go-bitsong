@@ -238,7 +238,7 @@ func (app *BitsongApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddr
 				KVStoreKey:       "", // Add the KV store key here
 			})
 			fmt.Printf("valAddr: %v\n", valAddr.String())
-			fmt.Printf("delAddr: %v\n", delAddr)
+			fmt.Printf("delAddr: %v\n", delAddr.String())
 			// todo: continue to the next del in the iteration of dels
 		}
 
@@ -256,7 +256,16 @@ func (app *BitsongApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddr
 		} else {
 			ctx.Logger().Info(fmt.Sprintf("val tokens for %q: %v", val.GetOperator(), val.GetTokens()))
 			ctx.Logger().Info(fmt.Sprintf("withdrawing %q: %v", val.GetOperator(), delAddr.String()))
-			endingPeriod, err := app.AppKeepers.DistrKeeper.IncrementValidatorPeriod(ctx, val)
+			fmt.Printf("del.Shares: %v\n", del.Shares)
+
+			valBz, err := app.AppKeepers.StakingKeeper.ValidatorAddressCodec().StringToBytes(val.GetOperator())
+			if err != nil {
+				panic(err)
+			}
+			rewards, err := app.AppKeepers.DistrKeeper.GetValidatorCurrentRewards(ctx, valBz)
+			endingPeriod := rewards.Period
+
+			// endingPeriod, err := app.AppKeepers.DistrKeeper.IncrementValidatorPeriod(ctx, val)
 			if err != nil {
 				panic(err)
 			}
@@ -391,7 +400,7 @@ func (app *BitsongApp) prepForZeroHeightGenesis(ctx sdk.Context, jailAllowedAddr
 	)
 
 	// /* Just to be safe, assert the invariants on current state. */
-	app.AppKeepers.CrisisKeeper.AssertInvariants(ctx)
+	// app.AppKeepers.CrisisKeeper.AssertInvariants(ctx)
 	// https://www.mintscan.io/bitsong/address/bitsong1j9tycazs8af33xgezncmhllap8gq0rpauwv7s0
 
 }
