@@ -696,6 +696,12 @@ func InitBitsongAppForTestnet(app *BitsongApp, newValAddr bytes.HexBytes, newVal
 		},
 		MinSelfDelegation: math.OneInt(),
 	}
+	newValConsAddrBytes, err := newVal.GetConsAddr()
+	if err != nil {
+		tmos.Exit(err.Error())
+	}
+	valConsensusAddr := sdk.ConsAddress(newValConsAddrBytes)
+	fmt.Printf("valConsensusAddr.String(): %v\n", valConsensusAddr.String())
 
 	// Remove all validators from power store
 	stakingKey := app.GetKey(stakingtypes.ModuleName)

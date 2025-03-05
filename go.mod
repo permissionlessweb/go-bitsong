@@ -233,9 +233,9 @@ replace (
 
 )
 
-// run: git clone -b v0.38.16 github.com/cometbft/cometbft
+// run: git clone -b v0.38.16-debug https://github.com/permissionlessweb/cometbft
 //
 // uncomment:
-// replace github.com/cometbft/cometbft => ./cometbft
+// replace github.com/cometbft/cometbft =>  ./cometbft
 
 exclude github.com/gogo/protobuf v1.3.3
