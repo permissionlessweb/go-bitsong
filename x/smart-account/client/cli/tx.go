@@ -26,8 +26,8 @@ func NewAddAuthentiactorCmd() (*btsgcli.TxCliDesc, *types.MsgAddAuthenticator) {
 		Short: "add an authenticator for an address",
 		Long:  "",
 		Example: `
-			osmosisd tx authenticator add-authenticator SigVerification <pubkey> --from val \
-			--chain-id osmosis-1 -b sync --keyring-backend test \
+			bitsongd tx authenticator add-authenticator SigVerification <pubkey> --from val \
+			--chain-id bitsong-2b -b sync --keyring-backend test \
 			--fees 1000uosmo
 		`,
 		ParseAndBuildMsg: BuildAddAuthenticatorMsg,
@@ -40,8 +40,8 @@ func NewRemoveAuthentiactorCmd() (*btsgcli.TxCliDesc, *types.MsgRemoveAuthentica
 		Short: "add an authenticator for an address",
 		Long:  "",
 		Example: `
-			osmosisd tx authenticator remove-authenticator 1 --from val \
-			--chain-id osmosis-1 -b sync --keyring-backend test \
+			bitsongd tx authenticator remove-authenticator 1 --from val \
+			--chain-id bitsong-2b -b sync --keyring-backend test \
 			--fees 1000uosmo
 		`,
 	}, &types.MsgRemoveAuthenticator{}
