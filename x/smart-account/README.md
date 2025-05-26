@@ -68,6 +68,14 @@ calling cosmwasm contracts to authenticate the messages.
 
 ### Authenticator configuration for accounts
 
+| Authenticators implementations | Description | Custom Types Needed |
+| --- | --- | --- |
+| [`AllOf`](./authenticator/all_of.go#L17) |   | 
+| [`AnyOf`](./authenticator/any_of.go#L17) |  | 
+| [`CosmwasmAuthenticatorV1`](./authenticator/cosmwasm.go#L17) |  | 
+| [`MessageFilter`](./authenticator/message_filter.go#L17) |   | 
+| [`SignatureVerification`](./authenticator/signature_authenticator.go#L17) | | 
+
 Accounts have the flexibility to be linked with multiple authenticators, a setup maintained in the system's storage 
 and managed by the module's Keeper. The keeper is responsible for adding and removing 
 authenticators, as well as storing any user data that the authenticators may need. 
@@ -214,7 +222,6 @@ RemoveAuthenticator(account, authenticatorGlobalId)
 2. **Identify Fee Payer**: The first signer of the transaction is considered the fee payer.
 
 3. **Authenticate Each Message**:
-
    - The associated account for every message is identified.
    - The system fetches the appropriate authenticators for that account.
    - The selected authenticator is retrieved from the transaction and used to determine which aithenticator to execute
@@ -318,7 +325,7 @@ pub enum AuthenticatorSudoMsg {
 The last three messages corresponds to steps 3, 5 and 7 of the [transaction authentication process](#transaction-authentication-overview) and the first
 two messages are used to handle the addition and removal of the authenticator.
 
-Request types are defined [here](https://docs.rs/osmosis-authenticators/latest/osmosis_authenticators).
+Request types are defined [here](https://docs.rs/btsg-auth/latest/btsg_auth).
 
 ## Queries
 
