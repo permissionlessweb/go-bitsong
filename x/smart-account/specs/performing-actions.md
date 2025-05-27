@@ -23,7 +23,7 @@ To perform actions with an account registered with custom authenticators, there 
     };
 ```
 
-### Forming Msgs For Account That Enabled Custom Authentication
+### Forming Msgs For Account That Enable Custom Authentication
 
 - `TxExtension`
 - `non_critical_extension_options`
