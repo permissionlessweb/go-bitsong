@@ -13,6 +13,7 @@ import (
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
 	errorsmod "cosmossdk.io/errors"
+	btsgcrypto "github.com/bitsongofficial/go-bitsong/crypto/sha256"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
@@ -223,6 +224,7 @@ func GenerateAuthenticationRequest(
 	if err != nil {
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get signatures")
 	}
+	cosmicWavsHash := btsgcrypto.Sha256Msgs(tx.GetMsgs())
 
 	// Build the authentication request
 	authRequest := AuthenticationRequest{
@@ -235,7 +237,7 @@ func GenerateAuthenticationRequest(
 		Signature:  msgSignature,
 		TxData:     txData,
 		SignModeTxData: SignModeData{
-			Direct: []byte("signBytes"),
+			Direct: cosmicWavsHash[:],
 		},
 		SignatureData: SimplifiedSignatureData{
 			Signers:    txSigners,
