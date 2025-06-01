@@ -7,6 +7,7 @@ import (
 	blst "github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
 	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
@@ -16,7 +17,7 @@ type Bls12 struct {
 	// signatureAssignment SignatureAssignment
 }
 
-var _ Authenticator = &Bls12{}
+var auth Authenticator = &Bls12{}
 
 func NewBls12(am *AuthenticatorManager) Bls12 {
 	return Bls12{
@@ -55,30 +56,21 @@ func (bls Bls12) Initialize(config []byte) (Authenticator, error) {
 	return bls, nil
 }
 
-func (bls Bls12) Authenticate(ctx sdk.Context, request AuthenticationRequest) error {
+func (bls Bls12) Authenticate(ctx sdk.Context, req AuthenticationRequest) error {
 	// Validate input
-	if len(request.SignatureData.Signers) == 0 {
+	if len(req.SignatureData.Signers) == 0 {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no public keys provided")
 	}
-	// expect sha256sum signed to be provided here.
-	// We dont perform hash client side to save costs, but can be implemented.
-	if len(request.SignModeTxData.Direct) != 32 {
-		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "sha256sum hash signed by AVS set not provided")
-	}
-	if len(request.Signature) == 0 {
-		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no aggregated signature provided")
-	}
 
-	b1Points := request.SignatureData.Signers
-	b2Points := request.SignatureData.Signatures
-	msgDigestHash := request.SignModeTxData.Direct
-	providedAggregateSignature, err := blst.SignatureFromBytesNoValidation(request.Signature)
+	msgDigestHash := req.SignModeTxData.Direct
+
+	providedAggregateSignature, err := blst.SignatureFromBytesNoValidation(req.Signature)
 	if err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed blst.SignatureFromBytesNoValidatio: %v", err)
 	}
 	// Aggregate public keys
-	var aggPubKeys [][]byte
-	for i, pubKeyBytes := range b1Points {
+	var aggb1 [][]byte
+	for i, pubKeyBytes := range req.SignatureData.Signers {
 		if len(pubKeyBytes) == 0 {
 			continue
 		}
@@ -88,11 +80,11 @@ func (bls Bls12) Authenticate(ctx sdk.Context, request AuthenticationRequest) er
 		}
 
 		// Aggregate public keys (add them in G1)
-		aggPubKeys = append(aggPubKeys, pubKey.Marshal())
+		aggb1 = append(aggb1, pubKey.Marshal())
 	}
 
-	var aggSigArray []common.Signature
-	for i, signatureBytes := range b2Points {
+	var aggb2 []common.Signature
+	for i, signatureBytes := range req.SignatureData.Signatures {
 		if len(signatureBytes) == 0 {
 			continue
 		}
@@ -101,11 +93,11 @@ func (bls Bls12) Authenticate(ctx sdk.Context, request AuthenticationRequest) er
 		if err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed to deserialize wavs operator signature at index %d: %v", i, err)
 		}
-		aggSigArray = append(aggSigArray, sig)
+		aggb2 = append(aggb2, sig)
 	}
 	// Aggregate Signature
-	aggregatedSignature := blst.AggregateSignatures(aggSigArray)
-	aggregatedPubkey, err := blst.AggregatePublicKeys(aggPubKeys)
+	aggregatedSignature := blst.AggregateSignatures(aggb2)
+	aggregatedPubkey, err := blst.AggregatePublicKeys(aggb1)
 	if err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "Aggregated Signature Failed: %v", err)
 	}
