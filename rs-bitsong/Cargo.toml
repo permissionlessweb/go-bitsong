@@ -1,7 +1,0 @@
-[workspace]
-resolver = "2"
-members = [
-    "rust-proto-gen",
-    "rs-bitsong-sdk",
-    # "cosmrs"
-]
