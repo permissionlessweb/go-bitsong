@@ -1,6 +1,8 @@
 package authenticator
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 
 	txsigning "cosmossdk.io/x/tx/signing"
@@ -13,7 +15,6 @@ import (
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
 	errorsmod "cosmossdk.io/errors"
-	btsgcrypto "github.com/bitsongofficial/go-bitsong/crypto/sha256"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
@@ -31,7 +32,7 @@ type SignModeData struct {
 // LocalAny holds a message with its type URL and byte value. This is necessary because the type Any fails
 // to serialize and deserialize properly in nested contexts.
 type LocalAny struct {
-	TypeURL string `json:"type_url"`
+	TypeURL string `json:"typeUrl"`
 	Value   []byte `json:"value"`
 }
 
@@ -114,14 +115,14 @@ func getSignerData(ctx sdk.Context, ak authante.AccountKeeper, account sdk.AccAd
 
 // extractExplicitTxData makes the transaction data concrete for the authentication request. This is necessary to
 // pass the parsed data to the cosmwasm authenticator.
-func extractExplicitTxData(tx sdk.Tx, signerData authsigning.SignerData) (ExplicitTxData, []byte, error) {
+func extractExplicitTxData(tx sdk.Tx, signerData authsigning.SignerData) (ExplicitTxData, error) {
 	timeoutTx, ok := tx.(sdk.TxWithTimeoutHeight)
 	if !ok {
-		return ExplicitTxData{}, nil, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to cast tx to TxWithTimeoutHeight")
+		return ExplicitTxData{}, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to cast tx to TxWithTimeoutHeight")
 	}
 	memoTx, ok := tx.(sdk.TxWithMemo)
 	if !ok {
-		return ExplicitTxData{}, nil, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to cast tx to TxWithMemo")
+		return ExplicitTxData{}, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to cast tx to TxWithMemo")
 	}
 
 	// Encode messages as Anys and manually convert them to a struct we can serialize to json for cosmwasm.
@@ -130,15 +131,13 @@ func extractExplicitTxData(tx sdk.Tx, signerData authsigning.SignerData) (Explic
 	for i, txMsg := range txMsgs {
 		encodedMsg, err := types.NewAnyWithValue(txMsg)
 		if err != nil {
-			return ExplicitTxData{}, nil, errorsmod.Wrap(err, "failed to encode msg")
+			return ExplicitTxData{}, errorsmod.Wrap(err, "failed to encode msg")
 		}
 		msgs[i] = LocalAny{
 			TypeURL: encodedMsg.TypeUrl,
 			Value:   encodedMsg.Value,
 		}
 	}
-
-	cosmicWavsHash := btsgcrypto.Sha256Msgs(txMsgs)
 
 	return ExplicitTxData{
 		ChainID:         signerData.ChainID,
@@ -147,7 +146,7 @@ func extractExplicitTxData(tx sdk.Tx, signerData authsigning.SignerData) (Explic
 		TimeoutHeight:   timeoutTx.GetTimeoutHeight(),
 		Msgs:            msgs,
 		Memo:            memoTx.GetMemo(),
-	}, cosmicWavsHash[:], nil
+	}, nil
 }
 
 // extractSignatures returns the signature data for each signature in the transaction and the one for the current signer.
@@ -216,7 +215,7 @@ func GenerateAuthenticationRequest(
 	signerData := getSignerData(ctx, ak, account)
 
 	// Get the concrete transaction data to be passed to the authenticators
-	txData, cosmicWavsHash, err := extractExplicitTxData(tx, signerData)
+	txData, err := extractExplicitTxData(tx, signerData)
 	if err != nil {
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get explicit tx data")
 	}
@@ -238,7 +237,7 @@ func GenerateAuthenticationRequest(
 		Signature:  msgSignature,
 		TxData:     txData,
 		SignModeTxData: SignModeData{
-			Direct: cosmicWavsHash,
+			Direct: []byte("signBytes"),
 		},
 		SignatureData: SimplifiedSignatureData{
 			Signers:    txSigners,
@@ -265,4 +264,10 @@ func GenerateAuthenticationRequest(
 	}
 
 	return authRequest, nil
+}
+
+// Generates the SHA256SUM for an array of cosmos-sdk messages
+func Sha256Msgs(msgs []LocalAny) [32]byte {
+	jsonBytes, _ := json.Marshal(msgs)
+	return sha256.Sum256(jsonBytes)
 }

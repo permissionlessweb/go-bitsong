@@ -1,8 +1,6 @@
 package authenticator
 
 import (
-	"encoding/json"
-
 	errorsmod "cosmossdk.io/errors"
 	blst "github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
 	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
@@ -11,35 +9,31 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
-type Bls12 struct {
-	SubAuthenticators []Authenticator
-	am                *AuthenticatorManager
+type Bls12381 struct {
+	am *AuthenticatorManager
 	// signatureAssignment SignatureAssignment
 }
 
-var auth Authenticator = &Bls12{}
+var _ Authenticator = &Bls12381{}
 
-func NewBls12(am *AuthenticatorManager) Bls12 {
-	return Bls12{
-		am:                am,
-		SubAuthenticators: []Authenticator{},
-		// signatureAssignment: Single,
+func NewBls12381(am *AuthenticatorManager) Bls12381 {
+	return Bls12381{
+		am: am,
 	}
 }
 
-func NewPartitionedBls12(am *AuthenticatorManager) Bls12 {
-	return Bls12{
-		am:                am,
-		SubAuthenticators: []Authenticator{},
+func NewPartitionedBls12(am *AuthenticatorManager) Bls12381 {
+	return Bls12381{
+		am: am,
 	}
 }
 
-func (bls Bls12) Type() string {
+func (bls Bls12381) Type() string {
 
 	return "Bls12"
 }
 
-func (bls Bls12) StaticGas() uint64 {
+func (bls Bls12381) StaticGas() uint64 {
 	var totalGas uint64
 	// for _, auth := range bls.SubAuthenticators {
 	// 	totalGas += auth.StaticGas()
@@ -47,22 +41,18 @@ func (bls Bls12) StaticGas() uint64 {
 	return totalGas
 }
 
-func (bls Bls12) Initialize(config []byte) (Authenticator, error) {
-	var initDatas []SubAuthenticatorInitData
-	if err := json.Unmarshal(config, &initDatas); err != nil {
-		return nil, errorsmod.Wrap(err, "failed to parse sub-authenticators initialization data")
-	}
+func (bls Bls12381) Initialize(config []byte) (Authenticator, error) {
 
 	return bls, nil
 }
 
-func (bls Bls12) Authenticate(ctx sdk.Context, req AuthenticationRequest) error {
+func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) error {
 	// Validate input
 	if len(req.SignatureData.Signers) == 0 {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no public keys provided")
 	}
 
-	msgDigestHash := req.SignModeTxData.Direct
+	msgDigestHash := Sha256Msgs(req.TxData.Msgs)
 
 	providedAggregateSignature, err := blst.SignatureFromBytesNoValidation(req.Signature)
 	if err != nil {
@@ -105,11 +95,7 @@ func (bls Bls12) Authenticate(ctx sdk.Context, req AuthenticationRequest) error 
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "Aggregated Signature Failed: %v", err)
 	}
 
-	// digest msg hash that was signed
-	var digest [32]byte
-	copy(digest[:], msgDigestHash)
-
-	verified, err := blst.VerifySignature(providedAggregateSignature.Marshal(), digest, aggregatedPubkey)
+	verified, err := blst.VerifySignature(providedAggregateSignature.Marshal(), msgDigestHash, aggregatedPubkey)
 	if err != nil || !verified {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "blst.VerifySignature Failed: %v", err)
 	}
@@ -117,19 +103,19 @@ func (bls Bls12) Authenticate(ctx sdk.Context, req AuthenticationRequest) error 
 	return nil
 }
 
-func (bls Bls12) Track(ctx sdk.Context, request AuthenticationRequest) error {
-	return subTrack(ctx, request, bls.SubAuthenticators)
+func (bls Bls12381) Track(ctx sdk.Context, request AuthenticationRequest) error {
+	return nil
+	// return subTrack(ctx, request, bls.SubAuthenticators)
 }
 
-func (bls Bls12) ConfirmExecution(ctx sdk.Context, request AuthenticationRequest) error {
-
+func (bls Bls12381) ConfirmExecution(ctx sdk.Context, request AuthenticationRequest) error {
 	return nil
 }
 
-func (bls Bls12) OnAuthenticatorAdded(ctx sdk.Context, account sdk.AccAddress, config []byte, authenticatorId string) error {
+func (bls Bls12381) OnAuthenticatorAdded(ctx sdk.Context, account sdk.AccAddress, config []byte, authenticatorId string) error {
 	return onSubAuthenticatorsAdded(ctx, account, config, authenticatorId, bls.am)
 }
 
-func (bls Bls12) OnAuthenticatorRemoved(ctx sdk.Context, account sdk.AccAddress, config []byte, authenticatorId string) error {
+func (bls Bls12381) OnAuthenticatorRemoved(ctx sdk.Context, account sdk.AccAddress, config []byte, authenticatorId string) error {
 	return onSubAuthenticatorsRemoved(ctx, account, config, authenticatorId, bls.am)
 }
