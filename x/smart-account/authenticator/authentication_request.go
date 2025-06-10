@@ -7,11 +7,11 @@ import (
 
 	txsigning "cosmossdk.io/x/tx/signing"
 
-	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
-
+	sat "github.com/bitsongofficial/go-bitsong/x/smart-account/types"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
+	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
 	errorsmod "cosmossdk.io/errors"
@@ -81,7 +81,6 @@ func GetSignerAndSignatures(tx sdk.Tx) (signers []sdk.AccAddress, signatures []s
 	for _, signer := range signerBytes {
 		signers = append(signers, sdk.AccAddress(signer))
 	}
-
 	// check that signer length and signature length are the same
 	if len(signatures) != len(signers) {
 		return nil, nil,
@@ -163,6 +162,7 @@ func extractSignatures(txSigners []sdk.AccAddress, txSignatures []signing.Signat
 			return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to cast signature to SingleSignatureData")
 		}
 
+		fmt.Printf("single: %v\n", single)
 		signatures = append(signatures, single.Signature)
 
 		if txSigners[i].Equals(account) {
@@ -191,7 +191,12 @@ func GenerateAuthenticationRequest(
 	msgIndex int,
 	simulate bool,
 	replayProtection ReplayProtection,
+	extensionSigner *sat.SmartAccountAuth,
 ) (AuthenticationRequest, error) {
+	var simpleSignatureData = SimplifiedSignatureData{
+		Signers:    make([]sdk.AccAddress, 0),
+		Signatures: make([][]byte, 0),
+	}
 	// Only supporting one signer per message. This will be enforced in sdk v0.50
 	signers, _, err := cdc.GetMsgV1Signers(msg)
 	if err != nil {
@@ -226,6 +231,16 @@ func GenerateAuthenticationRequest(
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get signatures")
 	}
 
+	if extensionSigner != nil && len(extensionSigner.PublicKeys) > 0 {
+		for i, pk := range extensionSigner.PublicKeys {
+			simpleSignatureData.Signers = append(simpleSignatureData.Signers, pk)
+			simpleSignatureData.Signatures = append(simpleSignatureData.Signatures, extensionSigner.Signatures[i])
+		}
+	} else {
+		simpleSignatureData.Signatures = append(simpleSignatureData.Signatures, signatures...)
+		simpleSignatureData.Signers = append(simpleSignatureData.Signers, signer)
+	}
+
 	// Build the authentication request
 	authRequest := AuthenticationRequest{
 		Account:    account,
@@ -239,10 +254,7 @@ func GenerateAuthenticationRequest(
 		SignModeTxData: SignModeData{
 			Direct: []byte("signBytes"),
 		},
-		SignatureData: SimplifiedSignatureData{
-			Signers:    txSigners,
-			Signatures: signatures,
-		},
+		SignatureData:       simpleSignatureData,
 		Simulate:            simulate,
 		AuthenticatorParams: nil,
 	}

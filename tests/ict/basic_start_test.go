@@ -8,7 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
+
+	fantokentypes "github.com/bitsongofficial/go-bitsong/x/fantoken/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
@@ -93,11 +96,82 @@ func TestBasicBtsgStart(t *testing.T) {
 	t.Run("slashing", func(t *testing.T) {
 		testSlashing(ctx, t, bitsong)
 	})
+	t.Run("fantoken", func(t *testing.T) {
+		testFanToken(ctx, t, bitsong, users)
+	})
 
 	t.Cleanup(func() {
 		_ = ic.Close()
 	})
 }
+
+// testUpgrade test the queries for upgrade information. Actual upgrades take place in other test.
+// func testUpgrade(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain) {
+// 	v, err := chain.UpgradeQueryAllModuleVersions(ctx)
+// 	require.NoError(t, err)
+// 	require.NotEmpty(t, v)
+
+// 	// UpgradeQueryModuleVersion
+// 	authority, err := chain.UpgradeQueryAuthority(ctx)
+// 	require.NoError(t, err)
+// 	require.NotEmpty(t, authority)
+
+// 	plan, err := chain.UpgradeQueryPlan(ctx)
+// 	require.NoError(t, err)
+// 	require.Nil(t, plan)
+
+// 	_, err = chain.UpgradeQueryAppliedPlan(ctx, "")
+// 	require.NoError(t, err)
+// }
+
+// func testGov(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, users []ibc.Wallet) {
+// 	node := chain.GetNode()
+
+// 	govModule := "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn"
+// 	coin := sdk.NewCoin(chain.Config().Denom, sdkmath.NewInt(1))
+
+// 	bankMsg := &banktypes.MsgSend{
+// 		FromAddress: govModule,
+// 		ToAddress:   users[1].FormattedAddress(),
+// 		Amount:      sdk.NewCoins(coin),
+// 	}
+
+// 	// submit governance proposal
+// 	title := "Test Proposal"
+// 	prop, err := chain.BuildProposal([]cosmos.ProtoMessage{bankMsg}, title, title+" Summary", "none", "500"+chain.Config().Denom, govModule, false)
+// 	require.NoError(t, err)
+
+// 	_, err = node.GovSubmitProposal(ctx, users[0].KeyName(), prop)
+// 	require.NoError(t, err)
+
+// 	proposal, err := chain.GovQueryProposalV1(ctx, 1)
+// 	require.NoError(t, err)
+// 	require.EqualValues(t, proposal.Title, title)
+
+// 	// vote on the proposal
+// 	err = node.VoteOnProposal(ctx, users[0].KeyName(), 1, "yes")
+// 	require.NoError(t, err)
+
+// 	v, err := chain.GovQueryVote(ctx, 1, users[0].FormattedAddress())
+// 	require.NoError(t, err)
+// 	require.EqualValues(t, v.Options[0].Option, govv1.VoteOption_VOTE_OPTION_YES)
+
+// 	// pass vote with all validators
+// 	err = chain.VoteOnProposalAllValidators(ctx, 1, "yes")
+// 	require.NoError(t, err)
+
+// 	// GovQueryProposalsV1
+// 	proposals, err := chain.GovQueryProposalsV1(ctx, govv1.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD)
+// 	require.NoError(t, err)
+// 	require.Len(t, proposals, 1)
+
+// 	require.NoError(t, testutil.WaitForBlocks(ctx, 10, chain))
+
+// 	// Proposal fails due to gov not having any funds
+// 	proposals, err = chain.GovQueryProposalsV1(ctx, govv1.ProposalStatus_PROPOSAL_STATUS_FAILED)
+// 	require.NoError(t, err)
+// 	require.Len(t, proposals, 1)
+// }
 
 func testAuthz(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, users []ibc.Wallet) {
 	granter := users[0].FormattedAddress()
@@ -155,6 +229,101 @@ func testAuthz(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, use
 
 	fmt.Printf("balanceAfter: %+v\n", balanceAfter)
 	require.EqualValues(t, balanceBefore.SubRaw(int64(sendAmt)), balanceAfter)
+}
+
+func testFanToken(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, users []ibc.Wallet) {
+	fantokenName := "strang"
+	fantokenSymbol := "symbol"
+	fantokenUri := "ipfs://"
+	fantokenMaxSupply := "21"
+	user0 := users[0].FormattedAddress()
+	user1 := users[1].FormattedAddress()
+	user2 := users[2].FormattedAddress()
+
+	node := chain.GetNode()
+	protocolPoolAcc := authtypes.NewModuleAddress("protocolpool")
+
+	maxSupply, _ := sdkmath.NewIntFromString(fantokenMaxSupply)
+	// issue fantoken
+	denom := fantokentypes.NewFanToken(fantokenName, fantokenSymbol, fantokenUri, maxSupply, users[0].Address(), users[0].Address(), node.CliContext().Height).Denom
+	err := FantokenIssue(ctx, node, user0, fantokenName, fantokenSymbol, fantokenMaxSupply, fantokenUri, user0, user0)
+	require.NoError(t, err)
+
+	// query fantoken just issued
+	fantoken, err := FantokenQueryFantoken(ctx, node, denom)
+	require.NoError(t, err)
+	require.Equal(t, fantokenName, fantoken.MetaData.Name)
+	require.Equal(t, fantokenSymbol, fantoken.MetaData.Symbol)
+	require.Equal(t, fantokenUri, fantoken.MetaData.URI)
+	require.Equal(t, maxSupply, fantoken.MaxSupply)
+
+	// assert non-owner cannot mint owner's fantoken
+	err = FantokenMint(ctx, node, user1, "21"+denom, user1)
+	require.Equal(t, errors.Wrapf(fantokentypes.ErrInvalidMinter, "the address %s is not the minter of the fantoken %s", user1, denom), err)
+
+	// owner mints fantoken
+	err = FantokenMint(ctx, node, user0, "1"+denom, user1)
+	require.NoError(t, err)
+
+	// ensure token was minted
+	balance, err := chain.GetBalance(ctx, user1, denom)
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(1), balance)
+
+	// cannot mint to module account
+	moduleAddr := authtypes.NewModuleAddress("fantoken")
+	err = FantokenMint(ctx, node, user0, "1"+denom, moduleAddr.String())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid recipient address")
+
+	// ensure fee goes to community pool as expected after mint
+	require.NoError(t, err)
+
+	communityPoolBefore, err := chain.BankQueryBalance(ctx, protocolPoolAcc.String(), denom)
+	require.NoError(t, err)
+	err = FantokenMint(ctx, node, user0, "1"+denom, user1)
+	require.NoError(t, err)
+	communityPoolAfter, err := chain.BankQueryBalance(ctx, protocolPoolAcc.String(), denom)
+	require.NoError(t, err)
+	require.True(t, communityPoolAfter.GT(communityPoolBefore))
+
+	// ensure we do not mint more than max supply
+	err = FantokenMint(ctx, node, user0, "20"+denom, user1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exceeds max supply")
+
+	// ensure token is minted to correct destination
+	err = FantokenMint(ctx, node, user0, "1"+denom, user2)
+	require.NoError(t, err)
+
+	balance, err = chain.BankQueryBalance(ctx, user2, denom)
+	require.NoError(t, err)
+	require.Equal(t, sdkmath.NewInt(1), balance)
+
+	// ensure only current authority can set new authority
+	err = FantokenSetAuthority(ctx, node, user1, denom, user2)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not the authority")
+	err = FantokenSetAuthority(ctx, node, user0, denom, user2)
+	require.NoError(t, err)
+	fantoken, err = FantokenQueryFantoken(ctx, node, denom)
+	require.NoError(t, err)
+	require.Equal(t, user2, fantoken.GetAuthority().String())
+
+	// ensure only current authority can set a new minter
+	err = FantokenSetMinter(ctx, node, user1, denom, user1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not the authority")
+	err = FantokenSetMinter(ctx, node, user2, denom, user1)
+	require.NoError(t, err)
+	fantoken, err = FantokenQueryFantoken(ctx, node, denom)
+	require.NoError(t, err)
+	require.Equal(t, user1, fantoken.Minter)
+
+	// ensure uri is set properly
+	fantoken, err = FantokenQueryFantoken(ctx, node, denom)
+	require.NoError(t, err)
+	require.Equal(t, fantokenUri, fantoken.GetMetaData().URI)
 }
 
 func testBank(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, users []ibc.Wallet) {
@@ -585,7 +754,73 @@ func testAuth(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain) {
 	require.EqualValues(t, govAddr, accInfo.Address)
 }
 
-// DistributionFundCommunityPool funds the community pool with the specified amount of coins.
+// FantokenIssue issues a new fantoken.
+func FantokenIssue(ctx context.Context, node *cosmos.ChainNode, keyName, name, symbol, maxSupply, uri, minter, authority string) error {
+	_, err := node.ExecTx(ctx,
+		keyName, "fantoken", "issue",
+		"--name", name,
+		"--minter", name,
+		"--symbol", symbol,
+		"--max-supply", maxSupply,
+		"--uri", uri,
+		"--minter", minter,
+		"--authority", authority,
+		// "--fees", fees,
+		// "--chain-id", node.CliContext().ChainID,
+	)
+	return err
+}
+
+// FantokenMint issues a new fantoken.
+func FantokenMint(ctx context.Context, node *cosmos.ChainNode, keyName, amountWithDenom, recipient string) error {
+	_, err := node.ExecTx(ctx,
+		keyName, "fantoken", "mint", amountWithDenom,
+		"--recipient", recipient,
+	)
+	return err
+}
+
+// FantokenSetAuthority sets an  new authority for a fantoken.
+func FantokenSetMinter(ctx context.Context, node *cosmos.ChainNode, keyName, denom, newAuthority string) error {
+	_, err := node.ExecTx(ctx,
+		keyName, "fantoken", "set-minter", denom,
+		"--new-minter", newAuthority,
+	)
+	return err
+}
+
+// FantokenSetAuthority sets an  new authority for a fantoken.
+func FantokenSetAuthority(ctx context.Context, node *cosmos.ChainNode, keyName, denom, newAuthority string) error {
+	_, err := node.ExecTx(ctx,
+		keyName, "fantoken", "set-authority", denom,
+		"--new-authority", newAuthority,
+	)
+	return err
+}
+
+// FantokenMint issues a new fantoken.
+func FantokenDisableMint(ctx context.Context, node *cosmos.ChainNode, keyName, fantoken string) error {
+	_, err := node.ExecTx(ctx,
+		keyName, "fantoken", "disable-mint", fantoken,
+	)
+	return err
+}
+
+// FantokenQueryParams returns the params for the fantoken module
+func FantokenQueryParams(ctx context.Context, node *cosmos.ChainNode) (*fantokentypes.Params, error) {
+	res, err := fantokentypes.NewQueryClient(node.GrpcConn).Params(ctx, &fantokentypes.QueryParamsRequest{})
+	return &res.Params, err
+}
+
+// FantokenQueryParams returns a fantoken given the denom
+func FantokenQueryFantoken(ctx context.Context, node *cosmos.ChainNode, denom string) (*fantokentypes.FanToken, error) {
+	res, err := fantokentypes.NewQueryClient(node.GrpcConn).FanToken(ctx, &fantokentypes.QueryFanTokenRequest{
+		Denom: denom,
+	})
+	return res.Fantoken, err
+}
+
+// ProtocolPoolFundCommunityPool funds the community pool with the specified amount of coins.
 func ProtocolPoolFundCommunityPool(ctx context.Context, node *cosmos.ChainNode, keyName, amount string) error {
 	_, err := node.ExecTx(ctx,
 		keyName, "protocolpool", "fund-community-pool", amount,
