@@ -32,7 +32,7 @@ type SignModeData struct {
 // LocalAny holds a message with its type URL and byte value. This is necessary because the type Any fails
 // to serialize and deserialize properly in nested contexts.
 type LocalAny struct {
-	TypeURL string `json:"typeUrl"`
+	TypeURL string `json:"type_url"`
 	Value   []byte `json:"value"`
 }
 
@@ -154,15 +154,29 @@ func extractExplicitTxData(tx sdk.Tx, signerData authsigning.SignerData) (Explic
 // corresponding signer, which involves iterating over the signatures. To avoid iterating over the signatures twice,
 // we do replay protection here instead of in a separate replay protection function.
 //
-// Only SingleSignatureData is supported. Multisigs can be implemented by using partitioned compound authenticators
-func extractSignatures(txSigners []sdk.AccAddress, txSignatures []signing.SignatureV2, txData ExplicitTxData, account sdk.AccAddress, replayProtection ReplayProtection) (signatures [][]byte, msgSignature []byte, err error) {
+// If this tx is making use of Aggregated Signatures,we optionally expect a single aggregated pk & sig, or else we return nothing.
+func extractSignatures(txSigners []sdk.AccAddress, txSignatures []signing.SignatureV2, txData ExplicitTxData, account sdk.AccAddress, replayProtection ReplayProtection, aggEnabled bool) (signatures [][]byte, msgSignature []byte, err error) {
+	if aggEnabled {
+		if len(txSignatures) > 0 {
+			aggregatedSig := txSignatures[0]
+			single, ok := aggregatedSig.Data.(*signing.SingleSignatureData)
+			if !ok {
+				return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to cast aggregated signature to SingleSignatureData")
+			}
+			if replayProtection(&txData, &aggregatedSig); err != nil {
+				return nil, nil, err
+			}
+			return nil, single.Signature, nil
+		}
+		return nil, nil, nil
+	}
 	for i, signature := range txSignatures {
 		single, ok := signature.Data.(*signing.SingleSignatureData)
 		if !ok {
 			return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to cast signature to SingleSignatureData")
 		}
 
-		fmt.Printf("single: %v\n", single)
+		// fmt.Printf("single: %v\n", single)
 		signatures = append(signatures, single.Signature)
 
 		if txSigners[i].Equals(account) {
@@ -225,17 +239,21 @@ func GenerateAuthenticationRequest(
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get explicit tx data")
 	}
 
-	// Get the signatures for the transaction and execute replay protection
-	signatures, msgSignature, err := extractSignatures(txSigners, txSignatures, txData, account, replayProtection)
+	// check if TxExtension is using aggregated consensus authentication
+	aggEnabled := extensionSigner != nil && len(extensionSigner.Signatures) > 0
+
+	// Get the signatures for the transaction and execute replay protection.
+	signatures, msgSignature, err := extractSignatures(txSigners, txSignatures, txData, account, replayProtection, aggEnabled)
 	if err != nil {
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get signatures")
 	}
 
-	if extensionSigner != nil && len(extensionSigner.PublicKeys) > 0 {
+	if aggEnabled {
 		for i, pk := range extensionSigner.PublicKeys {
 			simpleSignatureData.Signers = append(simpleSignatureData.Signers, pk)
 			simpleSignatureData.Signatures = append(simpleSignatureData.Signatures, extensionSigner.Signatures[i])
 		}
+		// any aggregated
 	} else {
 		simpleSignatureData.Signatures = append(simpleSignatureData.Signatures, signatures...)
 		simpleSignatureData.Signers = append(simpleSignatureData.Signers, signer)
@@ -274,7 +292,6 @@ func GenerateAuthenticationRequest(
 	authRequest.SignModeTxData = SignModeData{
 		Direct: signBytes,
 	}
-
 	return authRequest, nil
 }
 

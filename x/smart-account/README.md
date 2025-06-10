@@ -90,7 +90,6 @@ it needs to know which public key to use when verifying it. An account can confi
 `SignatureVerification` to be one of their authenticators and would need to provide the public key it wants 
 to use for verification in the configuration data.
 
-
 To make an authenticator work for a specific account, you just need to feed it the right information. For example, 
 the `SignatureVerification` needs to know which public key to check when verifying a signature. 
 So, if you're setting this up for your account, you have to configure it with the public key you want as part of the 
@@ -366,6 +365,8 @@ message TxExtension {
   // selected_authenticators holds the authenticator_id for the chosen
   // authenticator per message.
   repeated uint64 selected_authenticators = 1;
+  // smart account that will pay for all msg fees
+  SmartAccountAuth smart_account = 2;
 }
 ```
 
@@ -381,11 +382,8 @@ applications don't need to be aware of authenticators to get their txs processed
 To simplify the design of the authenticator module, a few restrictions have been set on the type of transactions
 that are accepted.
 
-### Messages can only have one signer
-
-On cosmos SDK versions before 0.50 it was possible to have multiple signers for a message. This will no longer be
-the case after v0.50, and we have introduced this restriction here as it makes it more clear which account a message
-is associated with.
+### Message Signing
+Messages by default expect to have a single pubkey & signature provided in the array of 
 
 ### The fee payer must be the first signer of the first message (or, feegrant exist for first sender)
 
