@@ -45,8 +45,8 @@ COPY --from=go-builder /code/build/bitsongd /usr/bin/bitsongd
 ENV HOME=/bitsongd
 WORKDIR $HOME
 
-# rest server, tendermint p2p, tendermint rpc
-EXPOSE 1317 26656 26657
+# rest server, tendermint p2p, tendermint rpc, grpc
+EXPOSE 1317 26656 26657 8080 9091
 
 CMD ["/usr/bin/bitsongd"]
 

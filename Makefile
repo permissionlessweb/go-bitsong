@@ -1,6 +1,6 @@
 #!/usr/bin/make -f
 
-include contrib/devtools/Makefile
+include scripts/devtools/Makefile
 include scripts/makefiles/build.mk
 include scripts/makefiles/docker.mk
 include scripts/makefiles/e2e.mk

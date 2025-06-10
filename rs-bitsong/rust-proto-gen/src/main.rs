@@ -198,7 +198,7 @@ fn output_sdk_version(out_dir: &Path) {
 
 fn compile_sdk_protos_and_services(out_dir: &Path) {
     info!(
-        "Compiling cosmos-sdk .proto files to Rust into '{}'...",
+        "Compiling go-bitsong .proto files to Rust into '{}'...",
         out_dir.display()
     );
 
@@ -207,7 +207,11 @@ fn compile_sdk_protos_and_services(out_dir: &Path) {
     let proto_path = Path::new(BITSONG_DIR).join("proto");
 
     info!("DEBUG PROTO PATH '{}'...", proto_path.display());
-    run_buf("buf.sdk.gen.yaml", proto_path, out_dir);
+    run_buf(
+        "buf.sdk.gen.yaml",
+        proto_path,
+        out_dir,
+    );
     info!("=> Done!");
 }
 
