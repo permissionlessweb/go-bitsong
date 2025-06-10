@@ -1,27 +1,242 @@
----
+version: 2
+
 project_name: go-bitsong
 
+env:
+  - CGO_ENABLED=1
+
+builds:
+  - id: bitsongd-linux-amd64
+    main: ./cmd/bitsongd
+    binary: bitsongd
+    hooks:
+      pre:
+        - wget https://github.com/CosmWasm/wasmvm/releases/download/{{ .Env.COSMWASM_VERSION }}/libwasmvm_muslc.x86_64.a -O /usr/lib/libwasmvm_muslc.x86_64.a
+    goos:
+      - linux
+    goarch:
+      - amd64
+    env:
+      - CC=x86_64-linux-gnu-gcc
+    flags:
+      - -mod=readonly
+      - -trimpath
+    ldflags:
+      - -X github.com/cosmos/cosmos-sdk/version.Name=osmosis
+      - -X github.com/cosmos/cosmos-sdk/version.AppName=bitsongd
+      - -X github.com/cosmos/cosmos-sdk/version.Version={{ .Version }}
+      - -X github.com/cosmos/cosmos-sdk/version.Commit={{ .Commit }}
+      - -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,ledger,muslc,osusergo
+      - -w -s
+      - -linkmode=external
+      - -extldflags '-L/usr/lib -lwasmvm_muslc.x86_64 -Wl,-z,muldefs -static -lm'
+    tags:
+      - netgo
+      - ledger
+      - muslc
+      - osusergo
+
+  - id: bitsongd-linux-arm64
+    main: ./cmd/bitsongd
+    binary: bitsongd
+    hooks:
+      pre:
+        - wget https://github.com/CosmWasm/wasmvm/releases/download/{{ .Env.COSMWASM_VERSION }}/libwasmvm_muslc.aarch64.a -O /usr/lib/libwasmvm_muslc.aarch64.a
+    goos:
+      - linux
+    goarch:
+      - arm64
+    env:
+      - CC=aarch64-linux-gnu-gcc
+    flags:
+      - -mod=readonly
+      - -trimpath
+    ldflags:
+      - -X github.com/cosmos/cosmos-sdk/version.Name=bitsong
+      - -X github.com/cosmos/cosmos-sdk/version.AppName=bitsongd
+      - -X github.com/cosmos/cosmos-sdk/version.Version={{ .Version }}
+      - -X github.com/cosmos/cosmos-sdk/version.Commit={{ .Commit }}
+      - -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,ledger,muslc,osusergo
+      - -w -s
+      - -linkmode=external
+      - -extldflags '-L/usr/lib -lwasmvm_muslc.aarch64 -Wl,-z,muldefs -static -lm'
+    tags:
+      - netgo
+      - ledger
+      - muslc
+      - osusergo
+
+  - id: bitsongd-darwin-amd64
+    main: ./cmd/bitsongd/main.go
+    binary: bitsongd
+    hooks:
+      pre:
+        - wget https://github.com/CosmWasm/wasmvm/releases/download/{{ .Env.COSMWASM_VERSION }}/libwasmvmstatic_darwin.a -O /lib/libwasmvmstatic_darwin.a
+    env:
+      - CC=o64-clang
+      - CGO_CFLAGS=-mmacosx-version-min=10.12
+      - CGO_LDFLAGS=-L/lib -mmacosx-version-min=10.12
+    goos:
+      - darwin
+    goarch:
+      - amd64
+    flags:
+      - -mod=readonly
+      - -trimpath
+    ldflags:
+      - -X github.com/cosmos/cosmos-sdk/version.Name=osmosis
+      - -X github.com/cosmos/cosmos-sdk/version.AppName=bitsongd
+      - -X github.com/cosmos/cosmos-sdk/version.Version={{ .Version }}
+      - -X github.com/cosmos/cosmos-sdk/version.Commit={{ .Commit }}
+      - -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,ledger,static_wasm
+      - -w -s
+      - -linkmode=external
+    tags:
+      - netgo
+      - ledger
+      - static_wasm
+
+  - id: bitsongd-darwin-arm64
+    main: ./cmd/bitsongd/main.go
+    binary: bitsongd
+    hooks:
+      pre:
+        - wget https://github.com/CosmWasm/wasmvm/releases/download/{{ .Env.COSMWASM_VERSION }}/libwasmvmstatic_darwin.a -O /lib/libwasmvmstatic_darwin.a
+    env:
+      - CC=oa64-clang
+      - CGO_LDFLAGS=-L/lib
+    goos:
+      - darwin
+    goarch:
+      - arm64
+    flags:
+      - -mod=readonly
+      - -trimpath
+    ldflags:
+      - -X github.com/cosmos/cosmos-sdk/version.Name=bitsong
+      - -X github.com/cosmos/cosmos-sdk/version.AppName=bitsongd
+      - -X github.com/cosmos/cosmos-sdk/version.Version={{ .Version }}
+      - -X github.com/cosmos/cosmos-sdk/version.Commit={{ .Commit }}
+      - -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,ledger,static_wasm
+      - -w -s
+      - -linkmode=external
+    tags:
+      - netgo
+      - ledger
+      - static_wasm
+
+universal_binaries:
+  - id: bitsongd-darwin-universal
+    ids:
+      - bitsongd-darwin-amd64
+      - bitsongd-darwin-arm64
+    replace: false
+
+archives:
+  - id: zipped
+    builds:
+      - bitsongd-darwin-universal
+      - bitsongd-linux-amd64
+      - bitsongd-linux-arm64
+      - bitsongd-darwin-amd64
+      - bitsongd-darwin-arm64
+    name_template: "{{.ProjectName}}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    format: tar.gz
+    files:
+      - none*
+  - id: binaries
+    builds:
+      - bitsongd-darwin-universal
+      - bitsongd-linux-amd64
+      - bitsongd-linux-arm64
+      - bitsongd-darwin-amd64
+      - bitsongd-darwin-arm64
+    name_template: "{{.ProjectName}}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    format: binary
+    files:
+      - none*
+
+checksum:
+  name_template: "sha256sum.txt"
+  algorithm: sha256
+
+# Docs: https://goreleaser.com/customization/changelog/
+changelog:
+  disable: true
+
+blobs:
+  - provider: s3
+    bucket: bitsong
+    directory: "binaries/v{{.Version}}"
+    endpoint: '{{ .Env.S3_ENDPOINT }}' 
+    region: '{{ .Env.S3_REGION }}' 
+    acl: public-read
+    ids:
+      - zipped
+      - binaries
+
+# Docs: https://goreleaser.com/customization/release/
 release:
   github:
     owner: bitsongofficial
     name: go-bitsong
+  replace_existing_draft: true
+  header: |
+    < DESCRIPTION OF RELEASE >
 
-builds:
-  - skip: true
+    ## Changelog
 
-archives:
-  - format: tar.gz
-    wrap_in_directory: true
-    format_overrides:
-      - goos: windows
-        format: zip
-    name_template: "{{ .Binary }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
-    files:
-      - LICENSE
-      - README.md
+    See the full changelog [here](https://github.com/bitsongofficial/go-bitsong/blob/v{{ .Version }}/CHANGELOG.md)
 
-snapshot:
-  name_template: SNAPSHOT-{{ .Commit }}
+    ## ⚡️ Binaries
 
-changelog:
-  skip: true
+    Binaries for Linux (amd64 and arm64) are available below.
+
+    #### 🔨 Build from source
+
+    If you prefer to build from source, you can use the following commands:
+
+    ````bash
+    git clone https://github.com/bitsongofficial/go-bitsong
+    cd go-bitsong && git checkout v{{ .Version }}
+    make install
+    ````
+
+    ## 🐳 Run with Docker
+
+    As an alternative to installing and running bitsongd on your system, you may run bitsongd in a Docker container.
+    The following Docker images are available in our registry:
+
+    | Image Name                                   | Base                                 | Description                       |
+    |----------------------------------------------|--------------------------------------|-----------------------------------|
+    | `bitsongofficial/go-bitsong:{{ .Version }}`            | `distroless/static-debian11`         | Default image based on Distroless |
+    | `bitsongofficial/go-bitsong:{{ .Version }}-distroless` | `distroless/static-debian11`         | Distroless image (same as above)  |
+    | `bitsongofficial/go-bitsong:{{ .Version }}-nonroot`    | `distroless/static-debian11:nonroot` | Distroless non-root image         |
+    | `bitsongofficial/go-bitsong:{{ .Version }}-alpine`     | `alpine`                             | Alpine image                      |
+
+    Example run:
+
+    ```bash
+    docker run bitsongofficial/go-bitsong:{{ .Version }} version
+    # v{{ .Version }}
+    ````
+
+    All the images support `arm64` and `amd64` architectures.
+
+  name_template: "Go-Bitsong v{{.Version}} 🧪"
+  mode: replace
+  draft: true
+
+# Docs: https://goreleaser.com/customization/announce/
+# We could automatically announce the release in
+# - discord
+# - slack
+# - twitter
+# - webhooks
+# - telegram
+# - reddit
+#
+# announce:
+  # discord:
+  #   enabled: true
+  #   message_template: 'New {{.Tag}} is out!'

@@ -15,6 +15,7 @@ import (
 	"github.com/bitsongofficial/go-bitsong/app/params"
 
 	"github.com/bitsongofficial/go-bitsong/x/smart-account/authenticator"
+	smartaccounttypes "github.com/bitsongofficial/go-bitsong/x/smart-account/types"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -175,7 +176,7 @@ func (s *MessageFilterTest) TestBankSend() {
 			sigModeHandler := s.EncodingConfig.TxConfig.SignModeHandler()
 			tx, err := s.GenSimpleTx([]sdk.Msg{tt.msg}, []cryptotypes.PrivKey{s.TestPrivKeys[0]})
 			s.Require().NoError(err)
-			request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, s.TestAccAddress[0], s.TestAccAddress[0], nil, sdk.NewCoins(), tt.msg, tx, 0, false, authenticator.SequenceMatch)
+			request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, s.TestAccAddress[0], s.TestAccAddress[0], nil, sdk.NewCoins(), tt.msg, tx, 0, false, authenticator.SequenceMatch, &smartaccounttypes.SmartAccountAuth{})
 			s.Require().NoError(err)
 
 			err = filter.Authenticate(s.Ctx, request)
@@ -374,7 +375,7 @@ func (s *MessageFilterTest) TestLimitOrder() {
 			sigModeHandler := s.EncodingConfig.TxConfig.SignModeHandler()
 			tx, err := s.GenSimpleTx([]sdk.Msg{tt.msg}, []cryptotypes.PrivKey{s.TestPrivKeys[0]})
 			s.Require().NoError(err)
-			request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, s.TestAccAddress[0], s.TestAccAddress[0], nil, sdk.NewCoins(), tt.msg, tx, 0, false, authenticator.SequenceMatch)
+			request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, s.TestAccAddress[0], s.TestAccAddress[0], nil, sdk.NewCoins(), tt.msg, tx, 0, false, authenticator.SequenceMatch, &smartaccounttypes.SmartAccountAuth{})
 			s.Require().NoError(err)
 
 			err = filter.Authenticate(s.Ctx, request)

@@ -254,6 +254,7 @@ func NewAppKeepers(
 		authenticator.NewAnyOf(appKeepers.AuthenticatorManager),
 		authenticator.NewPartitionedAnyOf(appKeepers.AuthenticatorManager),
 		authenticator.NewPartitionedAllOf(appKeepers.AuthenticatorManager),
+		authenticator.NewBls12381(appKeepers.AuthenticatorManager),
 	})
 	govModuleAddr := appKeepers.AccountKeeper.GetModuleAddress(govtypes.ModuleName)
 

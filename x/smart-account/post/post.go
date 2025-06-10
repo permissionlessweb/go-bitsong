@@ -113,6 +113,7 @@ func (ad AuthenticatorPostDecorator) PostHandle(
 			msgIndex,
 			simulate,
 			authenticator.NoReplayProtection,
+			&types.SmartAccountAuth{},
 		)
 		if err != nil {
 			return sdk.Context{},

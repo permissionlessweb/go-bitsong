@@ -1,15 +1,17 @@
 package authenticator
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 
 	txsigning "cosmossdk.io/x/tx/signing"
 
-	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
-
+	sat "github.com/bitsongofficial/go-bitsong/x/smart-account/types"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
+	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
 	errorsmod "cosmossdk.io/errors"
@@ -79,7 +81,6 @@ func GetSignerAndSignatures(tx sdk.Tx) (signers []sdk.AccAddress, signatures []s
 	for _, signer := range signerBytes {
 		signers = append(signers, sdk.AccAddress(signer))
 	}
-
 	// check that signer length and signature length are the same
 	if len(signatures) != len(signers) {
 		return nil, nil,
@@ -153,14 +154,29 @@ func extractExplicitTxData(tx sdk.Tx, signerData authsigning.SignerData) (Explic
 // corresponding signer, which involves iterating over the signatures. To avoid iterating over the signatures twice,
 // we do replay protection here instead of in a separate replay protection function.
 //
-// Only SingleSignatureData is supported. Multisigs can be implemented by using partitioned compound authenticators
-func extractSignatures(txSigners []sdk.AccAddress, txSignatures []signing.SignatureV2, txData ExplicitTxData, account sdk.AccAddress, replayProtection ReplayProtection) (signatures [][]byte, msgSignature []byte, err error) {
+// If this tx is making use of Aggregated Signatures,we optionally expect a single aggregated pk & sig, or else we return nothing.
+func extractSignatures(txSigners []sdk.AccAddress, txSignatures []signing.SignatureV2, txData ExplicitTxData, account sdk.AccAddress, replayProtection ReplayProtection, aggEnabled bool) (signatures [][]byte, msgSignature []byte, err error) {
+	if aggEnabled {
+		if len(txSignatures) > 0 {
+			aggregatedSig := txSignatures[0]
+			single, ok := aggregatedSig.Data.(*signing.SingleSignatureData)
+			if !ok {
+				return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to cast aggregated signature to SingleSignatureData")
+			}
+			if replayProtection(&txData, &aggregatedSig); err != nil {
+				return nil, nil, err
+			}
+			return nil, single.Signature, nil
+		}
+		return nil, nil, nil
+	}
 	for i, signature := range txSignatures {
 		single, ok := signature.Data.(*signing.SingleSignatureData)
 		if !ok {
 			return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to cast signature to SingleSignatureData")
 		}
 
+		// fmt.Printf("single: %v\n", single)
 		signatures = append(signatures, single.Signature)
 
 		if txSigners[i].Equals(account) {
@@ -189,7 +205,12 @@ func GenerateAuthenticationRequest(
 	msgIndex int,
 	simulate bool,
 	replayProtection ReplayProtection,
+	extensionSigner *sat.SmartAccountAuth,
 ) (AuthenticationRequest, error) {
+	var simpleSignatureData = SimplifiedSignatureData{
+		Signers:    make([]sdk.AccAddress, 0),
+		Signatures: make([][]byte, 0),
+	}
 	// Only supporting one signer per message. This will be enforced in sdk v0.50
 	signers, _, err := cdc.GetMsgV1Signers(msg)
 	if err != nil {
@@ -218,10 +239,24 @@ func GenerateAuthenticationRequest(
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get explicit tx data")
 	}
 
-	// Get the signatures for the transaction and execute replay protection
-	signatures, msgSignature, err := extractSignatures(txSigners, txSignatures, txData, account, replayProtection)
+	// check if TxExtension is using aggregated consensus authentication
+	aggEnabled := extensionSigner != nil && len(extensionSigner.Signatures) > 0
+
+	// Get the signatures for the transaction and execute replay protection.
+	signatures, msgSignature, err := extractSignatures(txSigners, txSignatures, txData, account, replayProtection, aggEnabled)
 	if err != nil {
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get signatures")
+	}
+
+	if aggEnabled {
+		for i, pk := range extensionSigner.PublicKeys {
+			simpleSignatureData.Signers = append(simpleSignatureData.Signers, pk)
+			simpleSignatureData.Signatures = append(simpleSignatureData.Signatures, extensionSigner.Signatures[i])
+		}
+		// any aggregated
+	} else {
+		simpleSignatureData.Signatures = append(simpleSignatureData.Signatures, signatures...)
+		simpleSignatureData.Signers = append(simpleSignatureData.Signers, signer)
 	}
 
 	// Build the authentication request
@@ -237,10 +272,7 @@ func GenerateAuthenticationRequest(
 		SignModeTxData: SignModeData{
 			Direct: []byte("signBytes"),
 		},
-		SignatureData: SimplifiedSignatureData{
-			Signers:    txSigners,
-			Signatures: signatures,
-		},
+		SignatureData:       simpleSignatureData,
 		Simulate:            simulate,
 		AuthenticatorParams: nil,
 	}
@@ -260,6 +292,11 @@ func GenerateAuthenticationRequest(
 	authRequest.SignModeTxData = SignModeData{
 		Direct: signBytes,
 	}
-
 	return authRequest, nil
+}
+
+// Generates the SHA256SUM for an array of cosmos-sdk messages
+func Sha256Msgs(msgs []LocalAny) [32]byte {
+	jsonBytes, _ := json.Marshal(msgs)
+	return sha256.Sum256(jsonBytes)
 }
