@@ -30,6 +30,8 @@ const (
 
 	AttributeKeyAccountSequenceAuthenticator = "authenticator_acc_seq"
 	AttributeKeySignatureAuthenticator       = "authenticator_signature"
+
+	Bls12381AggregateSignatures = "bls12381_aggregate"
 )
 
 var (
@@ -37,10 +39,14 @@ var (
 	KeyNextAccountAuthenticatorIdPrefix = []byte{0x01}
 	KeyAccountAuthenticatorsPrefix      = []byte{0x02}
 
+	KeyAccountBlsKeySetPrefix = []byte{0x03}
+
 	// Parameter keys
 	KeyMaximumUnauthenticatedGas = []byte("MaximumUnauthenticatedGas")
 	KeyIsSmartAccountActive      = []byte("IsSmartAccountActive")
 	KeyCircuitBreakerControllers = []byte("CircuitBreakerControllers")
+
+	// Authenticator store key
 )
 
 func KeyAccount(account sdk.AccAddress) []byte {
@@ -57,6 +63,10 @@ func KeyNextAccountAuthenticatorId() []byte {
 
 func KeyAccountAuthenticatorsPrefixId() []byte {
 	return BuildKey(KeyAccountAuthenticatorsPrefix)
+}
+
+func KeyAccountBlsKeySet(account sdk.AccAddress, id string) []byte {
+	return BuildKey(KeyAccountBlsKeySetPrefix, account.String(), id)
 }
 
 // BuildKey creates a key by concatenating the provided elements with the key separator.

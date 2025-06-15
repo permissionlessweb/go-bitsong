@@ -105,6 +105,6 @@ bitsongd keys add bitsong1regz7kj3ylg2dn9rl8vwrhclkgz528mf0tfsck --keyring-backe
 
 ## FAQ
 
-Q: How do I enable pprof server in LocalBitSong?
+<!-- Q: How do I enable pprof server in LocalBitSong?
 
-A: everything but the Dockerfile is already configured. Since we use a production Dockerfile in LocalBitSong, we don't want to expose the pprof server there by default. As a result, if you would like to use pprof, make sure to add `EXPOSE 6060` to the Dockerfile and rebuild the LocalBitSong image.
+A: everything but the Dockerfile is already configured. Since we use a production Dockerfile in LocalBitSong, we don't want to expose the pprof server there by default. As a result, if you would like to use pprof, make sure to add `EXPOSE 6060` to the Dockerfile and rebuild the LocalBitSong image. -->

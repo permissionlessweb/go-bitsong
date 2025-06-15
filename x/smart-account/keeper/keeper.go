@@ -188,7 +188,6 @@ func (k Keeper) AddAuthenticator(ctx sdk.Context, account sdk.AccAddress, authen
 
 	// Get the next global id value for authenticators from the store
 	id := k.InitializeOrGetNextAuthenticatorId(ctx)
-
 	// Each authenticator has a custom OnAuthenticatorAdded function
 	err := impl.OnAuthenticatorAdded(ctx, account, config, strconv.FormatUint(id, 10))
 	if err != nil {

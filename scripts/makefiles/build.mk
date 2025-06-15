@@ -20,10 +20,14 @@ build-help:
 
 build:  build-check-version go.sum
 ifeq ($(OS),Windows_NT)
-	go build -mod=readonly $(BUILD_FLAGS) -o build/bitsongd.exe ./cmd/bitsongd
+	$(error bitsongd server not supported. Use "make build-windows-client" for client)
+	exit 1
 else
 	go build $(BUILD_FLAGS) -o build/bitsongd ./cmd/bitsongd
 endif
+
+build-windows-client: go.sum
+	GOOS=windows GOARCH=amd64 go build -mod=readonly $(BUILD_FLAGS) -o build/bitsongd.exe ./cmd/bitsongd
 
 install: build-check-version go.sum
 	go install -mod=readonly $(BUILD_FLAGS) ./cmd/bitsongd

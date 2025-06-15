@@ -3,7 +3,6 @@ use crate::contract::SudoMsg;
 use crate::test_utils::{generate_keys_and_sign, sign_message};
 use crate::types::Pubkey;
 use cosmwasm_std::{from_json, to_json_binary, Addr, Binary};
-use osmosis_authenticators as oa;
 use sylvia::multitest::App;
 
 const OWNER: &str = "owner";
@@ -84,18 +83,18 @@ fn test_successful_authentication() {
     let sigs: Vec<Binary> = vec![sig1.clone(), sig2.clone()];
     let compound_sig: Binary = to_json_binary(&sigs).unwrap();
 
-    let mut auth_request = oa::AuthenticationRequest {
+    let mut auth_request = btsg_auth::AuthenticationRequest {
         signature: compound_sig.clone(),
-        sign_mode_tx_data: oa::SignModeTxData {
+        sign_mode_tx_data: btsg_auth::SignModeTxData {
             sign_mode_direct: Binary::from(message.as_bytes()),
             sign_mode_textual: None,
         },
         account: Addr::unchecked("account"),
-        msg: oa::Any {
+        msg: btsg_auth::Any {
             type_url: "".to_string(),
             value: Binary::from("msg".as_bytes()),
         },
-        tx_data: oa::TxData {
+        tx_data: btsg_auth::TxData {
             chain_id: "chain_id".to_string(),
             account_number: 1,
             sequence: 1,
@@ -103,7 +102,7 @@ fn test_successful_authentication() {
             msgs: vec![],
             memo: "".to_string(),
         },
-        signature_data: oa::SignatureData {
+        signature_data: btsg_auth::SignatureData {
             signers: vec![],
             signatures: vec![compound_sig.to_string()],
         },
@@ -118,13 +117,13 @@ fn test_successful_authentication() {
         .wasm_sudo(contract.contract_addr.clone(), &msg)
         .unwrap();
 
-    let auth_result: oa::AuthenticationResult = from_json(result.data.unwrap()).unwrap();
+    let auth_result: btsg_auth::AuthenticationResult = from_json(result.data.unwrap()).unwrap();
     println!("result: {:?}", auth_result);
 
     // Check if the result is Authenticated
     assert!(matches!(
         auth_result,
-        oa::AuthenticationResult::Authenticated {}
+        btsg_auth::AuthenticationResult::Authenticated {}
     ));
 
     // Modify the signatures to be something invalid
@@ -140,13 +139,13 @@ fn test_successful_authentication() {
         .wasm_sudo(contract.contract_addr.clone(), &msg)
         .unwrap();
 
-    let auth_result: oa::AuthenticationResult = from_json(result.data.unwrap()).unwrap();
+    let auth_result: btsg_auth::AuthenticationResult = from_json(result.data.unwrap()).unwrap();
     println!("result: {:?}", auth_result);
 
     // Check if the result is Authenticated
     assert!(matches!(
         auth_result,
-        oa::AuthenticationResult::NotAuthenticated {}
+        btsg_auth::AuthenticationResult::NotAuthenticated {}
     ));
 
     // Now let's use an invalid signature. This should be an error.

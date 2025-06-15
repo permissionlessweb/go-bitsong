@@ -5,7 +5,7 @@ use cosmwasm_std::{
     from_json, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError,
 };
 use cw_storage_plus::Item;
-use osmosis_authenticators::{
+use btsg_auth::{
     AuthenticationRequest, ConfirmExecutionRequest, OnAuthenticatorAddedRequest,
     OnAuthenticatorRemovedRequest, TrackRequest,
 };
@@ -118,7 +118,7 @@ fn on_authenticator_removed(
 fn authenticate(deps: DepsMut, auth_request: AuthenticationRequest) -> Result<Response, StdError> {
     deps.api.debug(&format!("auth_request {:?}", auth_request));
     if auth_request.msg.type_url == "/cosmos.bank.v1beta1.MsgSend" {
-        let send: osmosis_std::types::cosmos::bank::v1beta1::MsgSend =
+        let send: cosmos_sdk_proto::cosmos::bank::v1beta1::MsgSend =
             auth_request.msg.value.try_into()?;
 
         deps.api.debug(&format!("send {:?}", send));
@@ -127,7 +127,7 @@ fn authenticate(deps: DepsMut, auth_request: AuthenticationRequest) -> Result<Re
     let pubkey = PUBKEY.load(deps.storage)?;
 
     // verify the signature
-    let hash = osmosis_authenticators::sha256(&auth_request.sign_mode_tx_data.sign_mode_direct);
+    let hash = btsg_auth::sha256(&auth_request.sign_mode_tx_data.sign_mode_direct);
     deps.api
         .secp256k1_verify(&hash, &auth_request.signature, &pubkey)
         .or_else(|e| {

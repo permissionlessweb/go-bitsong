@@ -18,6 +18,7 @@ import (
 
 	"github.com/bitsongofficial/go-bitsong/x/smart-account/authenticator"
 	"github.com/bitsongofficial/go-bitsong/x/smart-account/testutils"
+	"github.com/bitsongofficial/go-bitsong/x/smart-account/types"
 	smartaccounttypes "github.com/bitsongofficial/go-bitsong/x/smart-account/types"
 )
 
@@ -208,7 +209,7 @@ func (s *AggregatedAuthenticatorsTest) TestAnyOf() {
 				// sample tx
 				tx, err := s.GenSimpleTx([]sdk.Msg{msg}, []cryptotypes.PrivKey{s.TestPrivKeys[0]})
 				s.Require().NoError(err)
-				request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, s.TestAccAddress[0], s.TestAccAddress[0], nil, sdk.NewCoins(), msg, tx, 0, false, authenticator.SequenceMatch)
+				request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, s.TestAccAddress[0], s.TestAccAddress[0], nil, sdk.NewCoins(), msg, tx, 0, false, authenticator.SequenceMatch, &types.AgAuthData{})
 				s.Require().NoError(err)
 
 				// Attempt to authenticate using initialized authenticator
@@ -352,7 +353,7 @@ func (s *AggregatedAuthenticatorsTest) TestAllOf() {
 				tx, err := s.GenSimpleTx([]sdk.Msg{msg}, []cryptotypes.PrivKey{s.TestPrivKeys[0]})
 				s.Require().NoError(err)
 				cdc := s.BitsongApp.AppCodec()
-				request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, cdc, ak, sigModeHandler, s.TestAccAddress[0], s.TestAccAddress[0], nil, sdk.NewCoins(), msg, tx, 0, false, authenticator.SequenceMatch)
+				request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, cdc, ak, sigModeHandler, s.TestAccAddress[0], s.TestAccAddress[0], nil, sdk.NewCoins(), msg, tx, 0, false, authenticator.SequenceMatch, &types.AgAuthData{})
 				s.Require().NoError(err)
 
 				// Attempt to authenticate using initialized authenticator
@@ -448,7 +449,7 @@ func (s *AggregatedAuthenticatorsTest) TestComposedAuthenticator() {
 			// sample tx
 			tx, err := s.GenSimpleTx([]sdk.Msg{msg}, []cryptotypes.PrivKey{s.TestPrivKeys[0]})
 			s.Require().NoError(err)
-			request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, s.TestAccAddress[0], s.TestAccAddress[0], nil, sdk.NewCoins(), msg, tx, 0, false, authenticator.SequenceMatch)
+			request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, s.TestAccAddress[0], s.TestAccAddress[0], nil, sdk.NewCoins(), msg, tx, 0, false, authenticator.SequenceMatch, &types.AgAuthData{})
 			s.Require().NoError(err)
 
 			err = initializedTop.Authenticate(s.Ctx, request)
