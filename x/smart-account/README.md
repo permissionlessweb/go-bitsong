@@ -1,5 +1,8 @@
 # x/smart-account Module
 
+## TODO:
+- fix pubkey byte length (48)
+
 ## General Explanation
 
 The `x/smart-account` module provides a robust and extensible framework for authenticating transactions.
@@ -366,7 +369,7 @@ message TxExtension {
   // authenticator per message.
   repeated uint64 selected_authenticators = 1;
   // Aggregated auth data if in use of aggregated keys authenticator
-  AgAuthData smart_account = 2;
+  SmartAccountAuthData smart_account = 2;
 }
 ```
 

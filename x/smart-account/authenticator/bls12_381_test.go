@@ -1,7 +1,6 @@
 package authenticator_test
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"os"
 	"testing"
@@ -77,11 +76,10 @@ func (s *Bls12381AuthenticatorTest) TestBls12381() {
 
 			bzBlsConfig, err := blsConfig.Marshal()
 			s.Require().NoError(err)
-			fmt.Printf("bzBlsConfig: %v\n", bzBlsConfig)
+			fmt.Printf("blsConfig: %v\n", blsConfig)
 
 			initializedAuth, err := s.Bls12381Auth.Initialize(bzBlsConfig)
 			s.Require().NoError(err)
-
 			if !tc.expectInit {
 				s.Require().Error(err)
 			} else {
@@ -95,20 +93,33 @@ func (s *Bls12381AuthenticatorTest) TestBls12381() {
 
 				// sample msg
 				msg := &bank.MsgSend{FromAddress: s.TestAccAddress[0].String(), ToAddress: "to", Amount: sdk.NewCoins(sdk.NewInt64Coin("foo", 1))}
+				fmt.Printf("msg: %v\n", msg)
+				fmt.Println(msg.Marshal())
+
+				bzConfig, err := blsConfig.Marshal()
+				s.Require().NoError(err)
 
 				// digest msg into hash being signed
 				msgsToHash := []sdk.Msg{msg}
-				var anyMsgs []string
+				var anyMsgs []authenticator.LocalAny
 				for _, in := range msgsToHash {
 					anyMsg, _ := codectypes.NewAnyWithValue(in)
-					anyMsgs = append(anyMsgs, anyMsg.String())
+					anyMsgs = append(anyMsgs, authenticator.LocalAny{
+						TypeURL: anyMsg.TypeUrl,
+						Value:   anyMsg.Value,
+					})
 				}
-				valueToHash, _ := types.Amino.Marshal(anyMsgs)
-				hash := sha256.Sum256(valueToHash)
+				// TODO: REMOVE ONCE TESTING IS DONE, JUST TESTING SHA FUNCTIONS
+				anyMsgs = append(anyMsgs, authenticator.LocalAny{
+					TypeURL: "test",
+					Value:   anyMsgs[0].Value,
+				})
+				hash := authenticator.Sha256Msgs(anyMsgs)
 
 				// Sign the message with the keys
 				smartAccTxExtension, err := SignMessageWithTestBls12Keys(s.EncodingConfig.TxConfig, hash[:], secretKeys)
 				s.Require().NoError(err)
+
 				// omit inclusion
 				if tc.includeTxExt {
 					smartAccAuth = smartAccTxExtension
@@ -128,11 +139,17 @@ func (s *Bls12381AuthenticatorTest) TestBls12381() {
 				//  pass msgs based on test instance
 				request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, cdc, ak, sigModeHandler, s.TestAccAddress[0], s.TestAccAddress[0], nil, sdk.NewCoins(), msg, tx, 0, false, authenticator.SequenceMatch, smartAccAuth)
 				s.Require().NoError(err)
+				fmt.Printf("request.SignatureData: %v\n", request.SignatureData)
+				request.AuthenticatorId = "1"
 
 				// Attempt to authenticate using initialized authenticator
+				err = initializedAuth.OnAuthenticatorAdded(s.Ctx, request.Account, bzConfig, request.AuthenticatorId)
+				s.Require().NoError(err)
 				err = initializedAuth.Authenticate(s.Ctx, request)
+				fmt.Printf("err: %v\n", err)
 				s.Require().Equal(tc.expectSuccessful, err == nil)
-
+				err = initializedAuth.Track(s.Ctx, request)
+				s.Require().NoError(err)
 				err = initializedAuth.ConfirmExecution(s.Ctx, request)
 				s.Require().Equal(tc.expectConfirm, err == nil)
 
@@ -171,7 +188,7 @@ func GenerateBLSPrivateKeysReturnBlsConfig(n int, threshold uint64, seed int64) 
 }
 
 // SignMessageWithKeys signs a 32-byte message hash with a list of BLS private keys
-// and returns a AgAuthData object with public keys and signatures.
+// and returns a SmartAccountAuthData object with public keys and signatures.
 func SignMessageWithTestBls12Keys(gen client.TxConfig, msgHash []byte, secretKeys []common.SecretKey) (*types.AgAuthData, error) {
 	// Validate message hash
 	if len(msgHash) != 32 {
@@ -183,9 +200,9 @@ func SignMessageWithTestBls12Keys(gen client.TxConfig, msgHash []byte, secretKey
 		return nil, fmt.Errorf("no secret keys provided")
 	}
 
-	// Initialize AgAuthData
+	// Initialize SmartAccountAuthData
 	auth := &types.AgAuthData{
-		Signatures: []byte{},
+		Data: []byte{},
 	}
 
 	// Sign with each key
@@ -216,11 +233,10 @@ func SignMessageWithTestBls12Keys(gen client.TxConfig, msgHash []byte, secretKey
 	// Marshal the signatures array into bytes
 	fmt.Printf("sigs: %v\n", sigs)
 	signBz, err := authenticator.MarshalSignatureJSON(sigs)
-	fmt.Printf("signBz: %v\n", signBz)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal signatures: %w", err)
 	}
-	auth.Signatures = signBz
+	auth.Data = signBz
 
 	return auth, nil
 }

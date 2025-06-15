@@ -1,7 +1,6 @@
 package authenticator
 
 import (
-	"encoding/json"
 	"fmt"
 
 	errorsmod "cosmossdk.io/errors"
@@ -44,24 +43,29 @@ func (bls Bls12381) Initialize(cfg []byte) (Authenticator, error) {
 
 func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) error {
 	// Validate input
-	if len(req.SignatureData.Signers) == 0 {
+	fmt.Printf("req.SignatureData: %v\n", req.SignatureData)
+	fmt.Printf("req.AuthenticatorId: %v\n", req.AuthenticatorId)
+	if len(req.SignatureData.Signatures) == 0 {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no public keys provided")
 	}
 	fmt.Printf("req.TxData.Msgs: %v\n", req.TxData.Msgs)
 	store := ctx.KVStore(bls.storeKey)
-	var blsConfig *types.BlsConfig
-	found, err := types.Get(store, types.KeyAccountBlsKeySet(req.Account, req.AuthenticatorId), blsConfig)
+	var blsConfig types.BlsConfig
+	key := types.KeyAccountBlsKeySet(req.Account, req.AuthenticatorId)
+	fmt.Printf("key: %v\n", key)
+	found, err := types.Get(store, key, &blsConfig)
 	if err != nil {
 		return errorsmod.Wrap(err, "failed to get authenticator")
 	}
 	if !found {
-		return errorsmod.Wrap(err, "no keys found, should never happen")
+		return fmt.Errorf("could not get key accunt by id & account")
 	}
 
 	// TODO: ensure keys provided are in expected keys array
 	// blsConfig.Pubkeys
 
 	msgDigestHash := Sha256Msgs(req.TxData.Msgs)
+	fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
 
 	providedAggregateSignature, err := btsgblst.SignatureFromBytesNoValidation(req.Signature)
 	if err != nil {
@@ -73,7 +77,9 @@ func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) err
 		if len(pubKeyBytes) == 0 {
 			continue
 		}
-		pubKey, err := btsgblst.PublicKeyFromBytes(pubKeyBytes)
+
+		fmt.Printf("len(pubKeyBytes): %v\n", len(pubKeyBytes))
+		pubKey, err := btsgblst.PublicKeyFromBytes(pubKeyBytes.Bytes())
 		if err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed to deserialize public key at index %d: %v", i, err)
 		}
@@ -131,7 +137,7 @@ func (bls Bls12381) OnAuthenticatorRemoved(ctx sdk.Context, account sdk.AccAddre
 
 func onBls12381Added(ctx sdk.Context, storekey storetypes.StoreKey, account sdk.AccAddress, data []byte, authenticatorId string, am *AuthenticatorManager) error {
 	var config types.BlsConfig
-	if err := json.Unmarshal(data, &config); err != nil {
+	if err := config.Unmarshal(data); err != nil {
 		return errorsmod.Wrapf(err, "failed to unmarshal BlsConfig init data")
 	}
 
@@ -139,9 +145,10 @@ func onBls12381Added(ctx sdk.Context, storekey storetypes.StoreKey, account sdk.
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "must set threshold to atleast to the number of keys, but got %d", config.Threshold)
 	}
 
-	types.MustSet(ctx.KVStore(storekey),
-		types.KeyAccountBlsKeySet(account, authenticatorId),
-		&config)
+	fmt.Printf("config: %v\n", config)
+	key := types.KeyAccountBlsKeySet(account, authenticatorId)
+	fmt.Printf("key: %v\n", key)
+	types.MustSet(ctx.KVStore(storekey), key, &config)
 
 	// If not all sub-authenticators are registered, return an error
 

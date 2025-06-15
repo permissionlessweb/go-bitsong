@@ -167,22 +167,48 @@ func extractExplicitTxData(tx sdk.Tx, signerData authsigning.SignerData) (Explic
 // we do replay protection here instead of in a separate replay protection function.
 //
 // If this tx is making use of Aggregated Signatures,we optionally expect a single aggregated pk & sig, or else we return nothing.
-func extractSignatures(txSigners []sdk.AccAddress, txSignatures []signing.SignatureV2, txData ExplicitTxData, account sdk.AccAddress, replayProtection ReplayProtection, aggEnabled bool) (signatures [][]byte, msgSignature []byte, err error) {
-	if aggEnabled {
+func extractSignatures(cdc codec.Codec, txSigners []sdk.AccAddress, txSignatures []signing.SignatureV2, txData ExplicitTxData, account sdk.AccAddress, replayProtection ReplayProtection, agAuthData *sat.AgAuthData) (signatures [][]byte, msgSignature []byte, err error) {
+	if agAuthData != nil {
 		// check if an aggregated signature was generated and provided offline
 		if len(txSignatures) > 0 {
+			// set agg key & sig first
 			aggregatedSig := txSignatures[0]
 			single, ok := aggregatedSig.Data.(*signing.SingleSignatureData)
 			if !ok {
 				return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to cast aggregated signature to SingleSignatureData")
 			}
+			fmt.Printf("single: %v\n", single)
 			if replayProtection(&txData, &aggregatedSig); err != nil {
 				return nil, nil, err
 			}
-			return nil, single.Signature, nil
+			signatures = append(signatures, single.Signature)
+		} else {
+			return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidType, "no tx signatures provided")
 		}
-		return nil, nil, nil
+
+		rawSigs, err := UnmarshalSignatureJSON(cdc, agAuthData.Data)
+		if err != nil {
+			return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to UnmarshalSignatureJSON")
+		}
+
+		for i, extSig := range rawSigs {
+			single, ok := extSig.Data.(*signing.SingleSignatureData)
+			if !ok {
+				return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to cast extTx signature to SingleSignatureData")
+			}
+			// fmt.Printf("single: %v\n", single)
+			signatures = append(signatures, single.Signature)
+			if txSigners[i].Equals(account) {
+				err = replayProtection(&txData, &extSig)
+				if err != nil {
+					return nil, nil, err
+				}
+				msgSignature = single.Signature
+			}
+		}
+		return signatures, msgSignature, nil
 	}
+
 	for i, signature := range txSignatures {
 		single, ok := signature.Data.(*signing.SingleSignatureData)
 		if !ok {
@@ -230,6 +256,7 @@ func GenerateAuthenticationRequest(
 	if err != nil {
 		return AuthenticationRequest{}, err
 	}
+	fmt.Printf("signers: %v\n", signers)
 
 	// either actual signer, or aggregated pubkey & address of account agg pubkeys control.
 	signer := sdk.AccAddress(signers[0])
@@ -238,39 +265,40 @@ func GenerateAuthenticationRequest(
 	}
 	// Check if this request is using aggregated consensus authentication
 	if agAuthData != nil {
-		if len(agAuthData.Signatures) > 0 {
+		if len(agAuthData.Data) > 0 {
 			aggEnabled = true
 		}
 	}
+	fmt.Printf("aggEnabled: %v\n", aggEnabled)
 
 	// Get the signers and signatures from the transaction.
 	txSigners, txSignatures, err := GetSignerAndSignatures(tx, agAuthData)
 	if err != nil {
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get signers and signatures")
 	}
-
 	// Get the signer data for the account. This is needed in the SignDoc
 	signerData := getSignerData(ctx, ak, account)
+
+	fmt.Printf("txSigners: %v\n", txSigners)
+	fmt.Printf("txSignatures: %v\n", txSignatures)
+	fmt.Printf("signerData: %v\n", signerData)
 
 	// Get the concrete transaction data to be passed to the authenticators
 	txData, err := extractExplicitTxData(tx, signerData)
 	if err != nil {
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get explicit tx data")
 	}
+	// fmt.Printf("txData: %v\n", txData)
 
 	// Get the signatures for the transaction and execute replay protection.
-	signatures, msgSignature, err := extractSignatures(txSigners, txSignatures, txData, account, replayProtection, aggEnabled)
+	// If aggregate keys are in use, set agg key & sig as first value, followed by all key/sig pairs in extension
+	signatures, msgSignature, err := extractSignatures(cdc, txSigners, txSignatures, txData, account, replayProtection, agAuthData)
 	if err != nil {
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get signatures")
 	}
 
-	if aggEnabled {
-		// unmarshal
-		// any aggregated
-	} else {
-		simpleSignatureData.Signatures = append(simpleSignatureData.Signatures, signatures...)
-		simpleSignatureData.Signers = append(simpleSignatureData.Signers, signer)
-	}
+	simpleSignatureData.Signatures = append(simpleSignatureData.Signatures, signatures...)
+	simpleSignatureData.Signers = append(simpleSignatureData.Signers, signer)
 
 	// Build the authentication request
 	authRequest := AuthenticationRequest{
@@ -324,8 +352,6 @@ func MarshalSignatureJSON(sigs []signing.SignatureV2) ([]byte, error) {
 		if !ok {
 			return nil, fmt.Errorf("failed to get bls12381.PubKey")
 		}
-		p1 := pubKey.Key
-		fmt.Printf("p1: %v\n", p1)
 		any, err := codectypes.NewAnyWithValue(pubKey)
 		if err != nil {
 			return nil, err
@@ -339,8 +365,6 @@ func MarshalSignatureJSON(sigs []signing.SignatureV2) ([]byte, error) {
 	}
 
 	toJSON := &signing.SignatureDescriptors{Signatures: descs}
-	fmt.Printf("toJSON: %v\n", toJSON)
-	fmt.Printf("toJSON.String(): %v\n", toJSON.String())
 
 	return codec.ProtoMarshalJSON(toJSON, nil)
 }

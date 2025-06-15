@@ -55,7 +55,7 @@ let non_critical_extension_options = vec![Any {
     type_url: "/bitsong.smartaccount.v1beta1.TxExtension".into(),
     value: to_json_binary(&TxExtension { 
         selected_authenticators: vec![1],
-        smart_account: AgAuthData{signatures:vec!["==35h3jb63"]}
+        smart_account: SmartAccountAuthData{signatures:vec!["==35h3jb63"]}
         })?.to_vec(),
 }].to_vec();
 
@@ -73,7 +73,7 @@ let wavs_broadcast_msg: TxBody = TxBody {
 
 ```   
 
-`AgAuthData` expects an array of `signing.SignatureV2` interfaced marshalled into their bytes, and is only usef for aggregated signature authentication methods (such as bls12-381)
+`SmartAccountAuthData` expects an array of `signing.SignatureV2` interfaced marshalled into their bytes, and is only usef for aggregated signature authentication methods (such as bls12-381)
 ## TS/JS
 ## Go
 

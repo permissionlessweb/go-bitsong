@@ -3,6 +3,7 @@ package bitsong.smartaccount.v1beta1;
 
 import "cosmos/msg/v1/msg.proto";
 import "amino/amino.proto";
+import "gogoproto/gogo.proto";
 
 option go_package = "github.com/bitsongofficial/go-bitsong/x/smart-account/types";
 
@@ -57,9 +58,11 @@ message MsgSetActiveState {
 
 message MsgSetActiveStateResponse {}
 
-// SmartAcccountAuth is an array of signing.SignatureV2 msgs from the G1 public keys.
+ 
+// AgAuthData is a Serialized array of signing.SignatureV2.
+// We Marshal & Unmarshal via `UnmarshalSignatureJSON` & `MarshalSignatureJSON`
 message AgAuthData {
-  bytes signatures = 1;
+  bytes data = 1;
 }
 
 // TxExtension allows for additional authenticator-specific data in

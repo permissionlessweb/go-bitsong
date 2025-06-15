@@ -491,7 +491,7 @@ func MakeTxBuilderBls381(
 		return nil, fmt.Errorf("tx does not implement V2AdaptableTx, got %T", txObj)
 	}
 	txData := adaptableTx.GetSigningTxData()
-	fmt.Printf("txData: %+v\n", txData)
+	// fmt.Printf("txData: %+v\n", txData)
 
 	// 2nd round: sign the transaction
 	for i, p := range signatures {
@@ -524,7 +524,9 @@ func MakeTxBuilderBls381(
 			PubKey:        pubKey,
 		}
 
+		// gets the value to sign
 		signBytes, err := gen.SignModeHandler().GetSignBytes(ctx, signingv1beta1.SignMode(signMode), txSignerData, txData)
+
 		if err != nil {
 			return nil, fmt.Errorf("failed to get sign bytes for signer %d: %v", i, err)
 		}
@@ -534,6 +536,7 @@ func MakeTxBuilderBls381(
 
 		sig := p.Sign(signBytes)
 		cosmosSigs[i].Data.(*signing.SingleSignatureData).Signature = sig.Marshal()
+		fmt.Printf("cosmosSigs[i].Data: %v\n", cosmosSigs[i].Data)
 		sigsInside = append(sigsInside, sig)
 	}
 
@@ -542,10 +545,11 @@ func MakeTxBuilderBls381(
 	if err != nil {
 		return nil, fmt.Errorf("failed to set messages: %v", err)
 	}
+
 	txExtensionData := &smartaccounttypes.TxExtension{
 		SelectedAuthenticators: []uint64{1},
 		SmartAccount: &smartaccounttypes.AgAuthData{
-			Signatures: authExtSignature,
+			Data: authExtSignature,
 		},
 	}
 	extOpts, err := codectypes.NewAnyWithValue(txExtensionData)
@@ -562,6 +566,7 @@ func MakeTxBuilderBls381(
 	if err != nil {
 		return nil, fmt.Errorf("failed to blst.GetCosmosBlsPubkeyFromPubkey: %v", err)
 	}
+	fmt.Printf("aggPubkey: %v\n", aggPubkey)
 	aggSig := blst.AggregateSignatures(sigsInside)
 	extx.SetExtensionOptions(extOpts)
 	err = tx.SetSignatures(signing.SignatureV2{
@@ -575,9 +580,13 @@ func MakeTxBuilderBls381(
 	if err != nil {
 		return nil, fmt.Errorf("failed to set final signatures: %v", err)
 	}
-	fmt.Printf("extOpts: %v\n", extOpts)
 
-	// todo: Aggregate keys into one, set single key in default signer as
+	sigTx, ok := tx.(authsigning.Tx)
+	pubkeys, _ := sigTx.GetPubKeys()
+	fmt.Printf("pubkeys: %v\n", pubkeys)
+
+	tx.GetTx()
+
 	return tx, nil
 }
 
