@@ -30,10 +30,10 @@ func TestPubKey_MarshalJSON(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert we can transcode pubkeys between cosmos-sdk & our libary
-	pubkey3, err := blst.PublicKeyFromBytes(pubKey2.Key.Compress())
+	pubkey3, err := blst.PublicKeyFromBytes(pubKey2.Key)
 	require.NoError(t, err)
 	// assert identical outcome
-	require.Equal(t, pubKey2.Key.Compress(), pubkey3.Marshal())
+	require.Equal(t, pubKey2.Key, pubkey3.Marshal())
 	require.NoError(t, err)
 }
 
@@ -49,7 +49,7 @@ func TestPrivKey_MarshalJSON(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, len(privKey.Marshal()), len(privKey3.Bytes()))
-	require.Equal(t, privKey.Marshal(), privKey3.Key.Serialize())
+	require.Equal(t, privKey.Marshal(), privKey3.Key)
 
 	cosmosPubKey, err := blst.GetCosmosBlsPubkey(privKey)
 	require.NoError(t, err)
@@ -57,8 +57,8 @@ func TestPrivKey_MarshalJSON(t *testing.T) {
 	require.Equal(t, privKey3.PubKey().Bytes(), cosmosPubKey.Bytes())
 
 	fmt.Printf("privKey: %v\n", privKey.Marshal())
-	fmt.Printf("privKey2: %v\n", privKey2.Key.Serialize())
-	fmt.Printf("privKey3: %v\n", privKey3.Key.Serialize())
+	fmt.Printf("privKey2: %v\n", privKey2.Key)
+	fmt.Printf("privKey3: %v\n", privKey3.Key)
 	fmt.Printf("cosmosPubKey: %v\n", cosmosPubKey)
 	fmt.Printf("cosmosPubKey.Bytes(): %v\n", cosmosPubKey.Bytes())
 }

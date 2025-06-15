@@ -424,8 +424,9 @@ func MakeTxBuilderBls381(
 	}
 
 	cosmosSigs := make([]signing.SignatureV2, len(signatures))
-	pk := make([]common.PublicKey, len(signatures))
-	sigsInside := make([]common.Signature, len(signatures))
+	pk := make([]common.PublicKey, 0)
+	sigsInside := make([]common.Signature, 0)
+
 	// Create a random length memo
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	memo := simulation.RandStringOfLength(r, simulation.RandIntBetween(r, 0, 100))
@@ -433,15 +434,12 @@ func MakeTxBuilderBls381(
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert sign mode: %v", err)
 	}
-	supportedModes := gen.SignModeHandler().SupportedModes()
-	fmt.Printf("supportedModes: %v\n", supportedModes)
+
+	// supportedModes := gen.SignModeHandler().SupportedModes()
+	// fmt.Printf("supportedModes: %v\n", supportedModes)
 	// if ok := supportedModes[signingv1beta1.SignMode(signMode)]; ok == nil {
 	// 	return nil, fmt.Errorf("sign mode %v not supported by SignModeHandler", signMode)
 	// }
-
-	// set signatures in custom tx extension
-
-	// only set aggregated signatures in array of
 
 	// 1st round: set SignatureV2 with derived public keys and empty signatures
 
@@ -505,7 +503,11 @@ func MakeTxBuilderBls381(
 
 		var pubKey *anypb.Any
 		if cosmosSigs[i].PubKey != nil {
-			anyPk, err := codectypes.NewAnyWithValue(cosmosSigs[i].PubKey)
+			cosmosPubkey, err := blst.GetCosmosBlsPubkey(p)
+			anyPk, err := codectypes.NewAnyWithValue(cosmosPubkey)
+			if err != nil {
+				return nil, fmt.Errorf("failed to GetCosmosBlsPubkey %d: %v", i, err)
+			}
 			if err != nil {
 				return nil, fmt.Errorf("failed to encode public key for signer %d: %v", i, err)
 			}
@@ -533,7 +535,6 @@ func MakeTxBuilderBls381(
 		sig := p.Sign(signBytes)
 		cosmosSigs[i].Data.(*signing.SingleSignatureData).Signature = sig.Marshal()
 		sigsInside = append(sigsInside, sig)
-		fmt.Printf("signerData: %+v\n", signerData)
 	}
 
 	// Set the signature details into the TxExtension
@@ -553,7 +554,11 @@ func MakeTxBuilderBls381(
 	}
 
 	// aggregate signatures & pubkey, set into signature options
-	aggPubkey, err := blst.GetCosmosBlsPubkeyFromPubkey(blst.AggregateMultiplePubkeys(pk))
+	fmt.Printf("pk: %v\n", pk[0])
+	aggPubkeys := blst.AggregateMultiplePubkeys(pk)
+	fmt.Printf("aggPubkeys: %v\n", aggPubkeys)
+
+	aggPubkey, err := blst.GetCosmosBlsPubkeyFromPubkey(aggPubkeys)
 	if err != nil {
 		return nil, fmt.Errorf("failed to blst.GetCosmosBlsPubkeyFromPubkey: %v", err)
 	}

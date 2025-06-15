@@ -5,18 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 
-	txsigning "cosmossdk.io/x/tx/signing"
+	"github.com/cosmos/cosmos-sdk/codec"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/cosmos/cosmos-sdk/crypto/keys/bls12381"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 
 	sat "github.com/bitsongofficial/go-bitsong/x/smart-account/types"
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	txsigning "cosmossdk.io/x/tx/signing"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
 	errorsmod "cosmossdk.io/errors"
-	"github.com/cosmos/cosmos-sdk/codec"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
@@ -316,11 +319,18 @@ func MarshalSignatureJSON(sigs []signing.SignatureV2) ([]byte, error) {
 
 	for i, sig := range sigs {
 		descData := signing.SignatureDataToProto(sig.Data)
-		any, err := codectypes.NewAnyWithValue(sig.PubKey)
+		// assert public key interface works
+		pubKey, ok := sig.PubKey.(*bls12381.PubKey)
+		if !ok {
+			return nil, fmt.Errorf("failed to get bls12381.PubKey")
+		}
+		p1 := pubKey.Key
+		fmt.Printf("p1: %v\n", p1)
+		any, err := codectypes.NewAnyWithValue(pubKey)
 		if err != nil {
 			return nil, err
 		}
-
+		fmt.Printf("any: %v\n", any)
 		descs[i] = &signing.SignatureDescriptor{
 			PublicKey: any,
 			Data:      descData,
@@ -329,6 +339,8 @@ func MarshalSignatureJSON(sigs []signing.SignatureV2) ([]byte, error) {
 	}
 
 	toJSON := &signing.SignatureDescriptors{Signatures: descs}
+	fmt.Printf("toJSON: %v\n", toJSON)
+	fmt.Printf("toJSON.String(): %v\n", toJSON.String())
 
 	return codec.ProtoMarshalJSON(toJSON, nil)
 }

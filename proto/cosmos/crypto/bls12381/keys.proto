@@ -23,11 +23,11 @@ message PubKey {
   // Then we have:
   // out == `"MQ=="`
   // out != `{"key":"MQ=="}`
-  option (amino.message_encoding)     = "key_field";
+  option (amino.message_encoding) = "key_field";
   option (gogoproto.goproto_stringer) = false;
   option (gogoproto.compare) = true;
 
-  bytes key = 1 [(gogoproto.casttype) = "blstPublicKey"];
+  bytes key = 1;
 }
 
 // PrivKey defines a bls12381 private key.
@@ -36,5 +36,5 @@ message PrivKey {
   option (amino.name)             = "tendermint/PrivKeyBls12381";
   option (amino.message_encoding) = "key_field";
 
-  bytes key = 1  [(gogoproto.casttype) = "blst.SecretKey"];
+  bytes key = 1;
 }

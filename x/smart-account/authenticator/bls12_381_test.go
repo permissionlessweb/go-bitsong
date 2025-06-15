@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/bitsongofficial/go-bitsong/crypto/bls"
-	"github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
+	btsgblst "github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
 	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
 	"github.com/bitsongofficial/go-bitsong/x/smart-account/authenticator"
 	"github.com/bitsongofficial/go-bitsong/x/smart-account/types"
@@ -160,6 +160,7 @@ func GenerateBLSPrivateKeysReturnBlsConfig(n int, threshold uint64, seed int64) 
 		if err != nil {
 			return nil, types.BlsConfig{}, fmt.Errorf("failed to create secret key %d: %v", i, err)
 		}
+
 		secretKeys[i] = secretKey
 
 	}
@@ -196,11 +197,10 @@ func SignMessageWithTestBls12Keys(gen client.TxConfig, msgHash []byte, secretKey
 		}
 
 		fmt.Printf("sk.PublicKey().Marshal(): %v\n", sk.PublicKey().Marshal())
-		pubkey, err := blst.GetCosmosBlsPubkeyFromPubkey(sk.PublicKey())
+		pubkey, err := btsgblst.GetCosmosBlsPubkeyFromPubkey(sk.PublicKey())
 		if err != nil { // Fix: check err != nil
 			return nil, fmt.Errorf("failed to NewPublicKeyFromBytes %d: %w", i, err)
 		}
-
 		sigV2 := signing.SignatureV2{
 			PubKey: pubkey,
 			Data: &signing.SingleSignatureData{
@@ -215,7 +215,7 @@ func SignMessageWithTestBls12Keys(gen client.TxConfig, msgHash []byte, secretKey
 
 	// Marshal the signatures array into bytes
 	fmt.Printf("sigs: %v\n", sigs)
-	signBz, err := gen.MarshalSignatureJSON(sigs)
+	signBz, err := authenticator.MarshalSignatureJSON(sigs)
 	fmt.Printf("signBz: %v\n", signBz)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal signatures: %w", err)
