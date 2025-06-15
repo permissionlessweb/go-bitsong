@@ -244,7 +244,9 @@ replace (
 )
 
 // feat/bls12 debug:
+
 // run: git clone -b feat/bls12 https://github.com/permissionlessweb/cosmos-sdk
 // replace github.com/cosmos/cosmos-sdk => ./cosmos-sdk
+replace github.com/cosmos/cosmos-sdk => github.com/permissionlessweb/cosmos-sdk v0.0.69
 
 exclude github.com/gogo/protobuf v1.3.3
