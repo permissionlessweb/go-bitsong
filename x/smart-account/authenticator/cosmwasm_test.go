@@ -311,7 +311,7 @@ func (s *CosmwasmAuthenticatorTest) TestGeneral() {
 
 	ak := s.BitsongApp.AccountKeeper
 	sigModeHandler := s.EncodingConfig.TxConfig.SignModeHandler()
-	request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, accounts[0], accounts[0], nil, feeCoins, testMsg, tx, 0, false, authenticator.SequenceMatch, &types.SmartAccountAuth{})
+	request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, accounts[0], accounts[0], nil, feeCoins, testMsg, tx, 0, false, authenticator.SequenceMatch, &types.AgAuthData{})
 	s.Require().NoError(err)
 	request.AuthenticatorId = "0"
 
@@ -443,7 +443,7 @@ func (s *CosmwasmAuthenticatorTest) TestCosignerContract() {
 	s.T().Skip("TODO: this currently fails as signatures are stripped from the tx. Should we add them or maybe do a better cosigner implementation later?")
 	ak := s.BitsongApp.AccountKeeper
 	sigModeHandler := s.EncodingConfig.TxConfig.SignModeHandler()
-	request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, accounts[0], accounts[0], nil, sdk.NewCoins(), testMsg, tx, 0, false, authenticator.SequenceMatch, &types.SmartAccountAuth{})
+	request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, accounts[0], accounts[0], nil, sdk.NewCoins(), testMsg, tx, 0, false, authenticator.SequenceMatch, &types.AgAuthData{})
 	s.Require().NoError(err)
 
 	status := auth.Authenticate(s.Ctx.WithBlockTime(time.Now()), request)

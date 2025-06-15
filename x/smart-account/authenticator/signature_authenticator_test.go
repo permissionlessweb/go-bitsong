@@ -1,24 +1,32 @@
 package authenticator_test
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
 
+	signingv1beta1 "cosmossdk.io/api/cosmos/tx/signing/v1beta1"
+	txsigning "cosmossdk.io/x/tx/signing"
 	"github.com/cosmos/cosmos-sdk/client"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/simulation"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/bitsongofficial/go-bitsong/app"
+	"github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
+	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
+
 	"github.com/bitsongofficial/go-bitsong/x/smart-account/authenticator"
 	"github.com/bitsongofficial/go-bitsong/x/smart-account/types"
+	smartaccounttypes "github.com/bitsongofficial/go-bitsong/x/smart-account/types"
 )
 
 type SigVerifyAuthenticationSuite struct {
@@ -270,7 +278,7 @@ func (s *SigVerifyAuthenticationSuite) TestSignatureAuthenticator() {
 
 			if tc.TestData.ShouldSucceedGettingData {
 				// request for the first message
-				request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, addr, addr, nil, sdk.NewCoins(), tc.TestData.Msgs[0], tx, 0, false, authenticator.SequenceMatch, &types.SmartAccountAuth{})
+				request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, addr, addr, nil, sdk.NewCoins(), tc.TestData.Msgs[0], tx, 0, false, authenticator.SequenceMatch, &types.AgAuthData{})
 				s.Require().NoError(err)
 
 				// Test Authenticate method
@@ -284,7 +292,7 @@ func (s *SigVerifyAuthenticationSuite) TestSignatureAuthenticator() {
 					s.Require().Error(err)
 				}
 			} else {
-				_, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, addr, addr, nil, sdk.NewCoins(), tc.TestData.Msgs[0], tx, 0, false, authenticator.SequenceMatch, &types.SmartAccountAuth{})
+				_, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, addr, addr, nil, sdk.NewCoins(), tc.TestData.Msgs[0], tx, 0, false, authenticator.SequenceMatch, &types.AgAuthData{})
 				s.Require().Error(err)
 			}
 		})
@@ -385,6 +393,189 @@ func (s *SigVerifyAuthenticationSuite) TestSignatureAuthenticator() {
 //	s.Require().True(authentication.IsAuthenticated())
 //}
 
+func MakeTxBuilderBls381(
+	ctx sdk.Context,
+	gen client.TxConfig,
+	msgs []sdk.Msg,
+	feeAmt sdk.Coins,
+	gas uint64,
+	chainID string,
+	accNums, accSeqs []uint64,
+	signers, signatures []common.SecretKey,
+) (client.TxBuilder, error) {
+	// Validate inputs
+	if len(msgs) == 0 {
+		return nil, fmt.Errorf("no messages provided")
+	}
+	if len(signers) == 0 || len(signatures) == 0 {
+		return nil, fmt.Errorf("no signers or signatures provided")
+	}
+	if len(signers) != len(signatures) {
+		return nil, fmt.Errorf("mismatched lengths: signatures=%d, signers=%d", len(signatures), len(signers))
+	}
+	if len(accNums) != len(signers) || len(accSeqs) != len(signers) {
+		return nil, fmt.Errorf("mismatched lengths: accNums=%d, accSeqs=%d, signers=%d", len(accNums), len(accSeqs), len(signers))
+	}
+	if feeAmt.IsZero() || !feeAmt.IsValid() {
+		return nil, fmt.Errorf("invalid fee amount: %v", feeAmt)
+	}
+	if gas == 0 {
+		return nil, fmt.Errorf("gas limit cannot be zero")
+	}
+
+	cosmosSigs := make([]signing.SignatureV2, len(signatures))
+	pk := make([]common.PublicKey, len(signatures))
+	sigsInside := make([]common.Signature, len(signatures))
+	// Create a random length memo
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	memo := simulation.RandStringOfLength(r, simulation.RandIntBetween(r, 0, 100))
+	signMode, err := authsigning.APISignModeToInternal(gen.SignModeHandler().DefaultMode())
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert sign mode: %v", err)
+	}
+	supportedModes := gen.SignModeHandler().SupportedModes()
+	fmt.Printf("supportedModes: %v\n", supportedModes)
+	// if ok := supportedModes[signingv1beta1.SignMode(signMode)]; ok == nil {
+	// 	return nil, fmt.Errorf("sign mode %v not supported by SignModeHandler", signMode)
+	// }
+
+	// set signatures in custom tx extension
+
+	// only set aggregated signatures in array of
+
+	// 1st round: set SignatureV2 with derived public keys and empty signatures
+
+	for i, privKey := range signers {
+		pubKey, err := blst.GetCosmosBlsPubkey(privKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to derive BLS public key for signer %d: %v", i, err)
+		}
+		if pubKey == nil {
+			return nil, fmt.Errorf("derived BLS public key is nil for signer %d", i)
+		}
+
+		cosmosSigs[i] = signing.SignatureV2{
+			PubKey: pubKey,
+			Data: &signing.SingleSignatureData{
+				SignMode:  signMode,
+				Signature: nil,
+			},
+			Sequence: accSeqs[i],
+		}
+		pk = append(pk, privKey.PublicKey())
+	}
+
+	tx := gen.NewTxBuilder()
+	extx, ok := tx.(client.ExtendedTxBuilder)
+	if !ok {
+		return nil, fmt.Errorf("failed to use ExtendTxBuilder interface: %v", err)
+	}
+
+	err = tx.SetMsgs(msgs...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set messages: %v", err)
+	}
+
+	tx.SetMemo(memo)
+	tx.SetFeeAmount(feeAmt)
+	tx.SetGasLimit(gas)
+
+	// Log transaction details
+	txObj := tx.GetTx()
+	if txObj == nil {
+		return nil, fmt.Errorf("tx.GetTx() returned nil")
+	}
+	// fmt.Printf("tx.GetTx(): %+v\n", txObj)
+
+	// Verify V2AdaptableTx implementation
+	adaptableTx, ok := txObj.(authsigning.V2AdaptableTx)
+	if !ok {
+		return nil, fmt.Errorf("tx does not implement V2AdaptableTx, got %T", txObj)
+	}
+	txData := adaptableTx.GetSigningTxData()
+	fmt.Printf("txData: %+v\n", txData)
+
+	// 2nd round: sign the transaction
+	for i, p := range signatures {
+		signerData := authsigning.SignerData{
+			ChainID:       chainID,
+			AccountNumber: accNums[i],
+			Sequence:      accSeqs[i],
+		}
+
+		var pubKey *anypb.Any
+		if cosmosSigs[i].PubKey != nil {
+			anyPk, err := codectypes.NewAnyWithValue(cosmosSigs[i].PubKey)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encode public key for signer %d: %v", i, err)
+			}
+			pubKey = &anypb.Any{
+				TypeUrl: anyPk.TypeUrl,
+				Value:   anyPk.Value,
+			}
+		}
+
+		txSignerData := txsigning.SignerData{
+			ChainID:       signerData.ChainID,
+			AccountNumber: signerData.AccountNumber,
+			Sequence:      signerData.Sequence,
+			PubKey:        pubKey,
+		}
+
+		signBytes, err := gen.SignModeHandler().GetSignBytes(ctx, signingv1beta1.SignMode(signMode), txSignerData, txData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get sign bytes for signer %d: %v", i, err)
+		}
+		if signBytes == nil {
+			return nil, fmt.Errorf("GetSignBytes returned nil for signer %d", i)
+		}
+
+		sig := p.Sign(signBytes)
+		cosmosSigs[i].Data.(*signing.SingleSignatureData).Signature = sig.Marshal()
+		sigsInside = append(sigsInside, sig)
+		fmt.Printf("signerData: %+v\n", signerData)
+	}
+
+	// Set the signature details into the TxExtension
+	authExtSignature, err := gen.MarshalSignatureJSON(cosmosSigs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set messages: %v", err)
+	}
+	txExtensionData := &smartaccounttypes.TxExtension{
+		SelectedAuthenticators: []uint64{1},
+		SmartAccount: &smartaccounttypes.AgAuthData{
+			Signatures: authExtSignature,
+		},
+	}
+	extOpts, err := codectypes.NewAnyWithValue(txExtensionData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set messages: %v", err)
+	}
+
+	// aggregate signatures & pubkey, set into signature options
+	aggPubkey, err := blst.GetCosmosBlsPubkeyFromPubkey(blst.AggregateMultiplePubkeys(pk))
+	if err != nil {
+		return nil, fmt.Errorf("failed to blst.GetCosmosBlsPubkeyFromPubkey: %v", err)
+	}
+	aggSig := blst.AggregateSignatures(sigsInside)
+	extx.SetExtensionOptions(extOpts)
+	err = tx.SetSignatures(signing.SignatureV2{
+		PubKey: aggPubkey,
+		Data: &signing.SingleSignatureData{
+			SignMode:  signMode,
+			Signature: aggSig.Marshal(),
+		},
+		Sequence: accSeqs[0],
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to set final signatures: %v", err)
+	}
+	fmt.Printf("extOpts: %v\n", extOpts)
+
+	// todo: Aggregate keys into one, set single key in default signer as
+	return tx, nil
+}
+
 func MakeTxBuilder(ctx sdk.Context,
 	gen client.TxConfig,
 	msgs []sdk.Msg,
@@ -472,6 +663,24 @@ func GenTx(
 	signatures []cryptotypes.PrivKey,
 ) (sdk.Tx, error) {
 	tx, err := MakeTxBuilder(ctx, gen, msgs, feeAmt, gas, chainID, accNums, accSeqs, signers, signatures)
+	if err != nil {
+		return nil, err
+	}
+	return tx.GetTx(), nil
+}
+
+// GenTx generates a signed mock transaction.
+func GenTxBls12381(
+	ctx sdk.Context,
+	gen client.TxConfig,
+	msgs []sdk.Msg,
+	feeAmt sdk.Coins,
+	gas uint64,
+	chainID string,
+	accNums, accSeqs []uint64,
+	signers, signatures []common.SecretKey,
+) (sdk.Tx, error) {
+	tx, err := MakeTxBuilderBls381(ctx, gen, msgs, feeAmt, gas, chainID, accNums, accSeqs, signers, signatures)
 	if err != nil {
 		return nil, err
 	}

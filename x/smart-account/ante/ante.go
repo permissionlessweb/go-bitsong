@@ -308,16 +308,16 @@ func (ad AuthenticatorDecorator) ValidateAuthenticatorFeePayer(ctx sdk.Context, 
 func (ad AuthenticatorDecorator) GetSelectedAuthenticatorsAndAggSignData(
 	tx sdk.Tx,
 	msgCount int,
-) ([]uint64, *types.SmartAccountAuth, error) {
+) ([]uint64, *types.AgAuthData, error) {
 	extTx, ok := tx.(authante.HasExtensionOptionsTx)
 	if !ok {
-		return nil, &types.SmartAccountAuth{}, errorsmod.Wrap(sdkerrors.ErrTxDecode, "Tx must be a HasExtensionOptionsTx to use Authenticators")
+		return nil, &types.AgAuthData{}, errorsmod.Wrap(sdkerrors.ErrTxDecode, "Tx must be a HasExtensionOptionsTx to use Authenticators")
 	}
 
 	// Get the selected authenticator options from the transaction.
 	txOptions := ad.smartAccountKeeper.GetAuthenticatorExtension(extTx.GetNonCriticalExtensionOptions())
 	if txOptions == nil {
-		return nil, &types.SmartAccountAuth{}, errorsmod.Wrap(sdkerrors.ErrInvalidRequest,
+		return nil, &types.AgAuthData{}, errorsmod.Wrap(sdkerrors.ErrInvalidRequest,
 			"Cannot get AuthenticatorTxOptions from tx")
 	}
 	// Retrieve the selected authenticators from the extension.
@@ -326,7 +326,7 @@ func (ad AuthenticatorDecorator) GetSelectedAuthenticatorsAndAggSignData(
 
 	if len(selectedAuthenticators) != msgCount {
 		// Return an error if the number of selected authenticators does not match the number of messages.
-		return nil, &types.SmartAccountAuth{}, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest,
+		return nil, &types.AgAuthData{}, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest,
 			"Mismatch between the number of selected authenticators and messages, msg count %d, got %d selected authenticators", msgCount, len(selectedAuthenticators))
 	}
 

@@ -1,48 +1,44 @@
 package authenticator
 
 import (
+	"encoding/json"
+	"fmt"
+
 	errorsmod "cosmossdk.io/errors"
-	blst "github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
+	storetypes "cosmossdk.io/store/types"
+	btsgblst "github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
 	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
+	"github.com/bitsongofficial/go-bitsong/x/smart-account/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
+// Bls12381 authenticates aggregate signatures from an set of public keys registered.
+// It allows for complex pattern matching to support advanced authentication flows.
 type Bls12381 struct {
-	am *AuthenticatorManager
-	// signatureAssignment SignatureAssignment
+	am       *AuthenticatorManager
+	storeKey storetypes.StoreKey
 }
 
 var _ Authenticator = &Bls12381{}
 
-func NewBls12381(am *AuthenticatorManager) Bls12381 {
+func NewBls12381(am *AuthenticatorManager, storeKey storetypes.StoreKey) Bls12381 {
 	return Bls12381{
-		am: am,
-	}
-}
-
-func NewPartitionedBls12(am *AuthenticatorManager) Bls12381 {
-	return Bls12381{
-		am: am,
+		am:       am,
+		storeKey: storeKey,
 	}
 }
 
 func (bls Bls12381) Type() string {
-
-	return "Bls12"
+	return "Bls12381"
 }
 
 func (bls Bls12381) StaticGas() uint64 {
-	var totalGas uint64
-	// for _, auth := range bls.SubAuthenticators {
-	// 	totalGas += auth.StaticGas()
-	// }
-	return totalGas
+	return 0
 }
 
-func (bls Bls12381) Initialize(config []byte) (Authenticator, error) {
-
+func (bls Bls12381) Initialize(cfg []byte) (Authenticator, error) {
 	return bls, nil
 }
 
@@ -51,12 +47,25 @@ func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) err
 	if len(req.SignatureData.Signers) == 0 {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no public keys provided")
 	}
+	fmt.Printf("req.TxData.Msgs: %v\n", req.TxData.Msgs)
+	store := ctx.KVStore(bls.storeKey)
+	var blsConfig *types.BlsConfig
+	found, err := types.Get(store, types.KeyAccountBlsKeySet(req.Account, req.AuthenticatorId), blsConfig)
+	if err != nil {
+		return errorsmod.Wrap(err, "failed to get authenticator")
+	}
+	if !found {
+		return errorsmod.Wrap(err, "no keys found, should never happen")
+	}
+
+	// TODO: ensure keys provided are in expected keys array
+	// blsConfig.Pubkeys
 
 	msgDigestHash := Sha256Msgs(req.TxData.Msgs)
 
-	providedAggregateSignature, err := blst.SignatureFromBytesNoValidation(req.Signature)
+	providedAggregateSignature, err := btsgblst.SignatureFromBytesNoValidation(req.Signature)
 	if err != nil {
-		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed blst.SignatureFromBytesNoValidatio: %v", err)
+		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed btsgblst.SignatureFromBytesNoValidatio: %v", err)
 	}
 	// Aggregate public keys
 	var aggb1 [][]byte
@@ -64,7 +73,7 @@ func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) err
 		if len(pubKeyBytes) == 0 {
 			continue
 		}
-		pubKey, err := blst.PublicKeyFromBytes(pubKeyBytes)
+		pubKey, err := btsgblst.PublicKeyFromBytes(pubKeyBytes)
 		if err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed to deserialize public key at index %d: %v", i, err)
 		}
@@ -79,15 +88,15 @@ func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) err
 			continue
 		}
 
-		sig, err := blst.SignatureFromBytes(signatureBytes)
+		sig, err := btsgblst.SignatureFromBytes(signatureBytes)
 		if err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed to deserialize wavs operator signature at index %d: %v", i, err)
 		}
 		aggb2 = append(aggb2, sig)
 	}
 	// Aggregate Signature
-	aggregatedSignature := blst.AggregateSignatures(aggb2)
-	aggregatedPubkey, err := blst.AggregatePublicKeys(aggb1)
+	aggregatedSignature := btsgblst.AggregateSignatures(aggb2)
+	aggregatedPubkey, err := btsgblst.AggregatePublicKeys(aggb1)
 	if err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "Aggregated Signature Failed: %v", err)
 	}
@@ -95,9 +104,9 @@ func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) err
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "Aggregated Signature Failed: %v", err)
 	}
 
-	verified, err := blst.VerifySignature(providedAggregateSignature.Marshal(), msgDigestHash, aggregatedPubkey)
+	verified, err := btsgblst.VerifySignature(providedAggregateSignature.Marshal(), msgDigestHash, aggregatedPubkey)
 	if err != nil || !verified {
-		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "blst.VerifySignature Failed: %v", err)
+		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "btsgblst.VerifySignature Failed: %v", err)
 	}
 
 	return nil
@@ -113,9 +122,28 @@ func (bls Bls12381) ConfirmExecution(ctx sdk.Context, request AuthenticationRequ
 }
 
 func (bls Bls12381) OnAuthenticatorAdded(ctx sdk.Context, account sdk.AccAddress, config []byte, authenticatorId string) error {
-	return onSubAuthenticatorsAdded(ctx, account, config, authenticatorId, bls.am)
+	return onBls12381Added(ctx, bls.storeKey, account, config, authenticatorId, bls.am)
 }
 
 func (bls Bls12381) OnAuthenticatorRemoved(ctx sdk.Context, account sdk.AccAddress, config []byte, authenticatorId string) error {
 	return onSubAuthenticatorsRemoved(ctx, account, config, authenticatorId, bls.am)
+}
+
+func onBls12381Added(ctx sdk.Context, storekey storetypes.StoreKey, account sdk.AccAddress, data []byte, authenticatorId string, am *AuthenticatorManager) error {
+	var config types.BlsConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return errorsmod.Wrapf(err, "failed to unmarshal BlsConfig init data")
+	}
+
+	if len(config.Pubkeys) < int(config.Threshold) {
+		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "must set threshold to atleast to the number of keys, but got %d", config.Threshold)
+	}
+
+	types.MustSet(ctx.KVStore(storekey),
+		types.KeyAccountBlsKeySet(account, authenticatorId),
+		&config)
+
+	// If not all sub-authenticators are registered, return an error
+
+	return nil
 }

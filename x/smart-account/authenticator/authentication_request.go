@@ -8,7 +8,8 @@ import (
 	txsigning "cosmossdk.io/x/tx/signing"
 
 	sat "github.com/bitsongofficial/go-bitsong/x/smart-account/types"
-	"github.com/cosmos/cosmos-sdk/codec/types"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
@@ -58,7 +59,7 @@ type ExplicitTxData struct {
 // A signer can only have one signature, so if it appears in multiple messages, the signatures must be
 // the same, and it will only be returned once by this function. This is to mimic the way the classic
 // sdk authentication works, and we will probably want to change this in the future
-func GetSignerAndSignatures(tx sdk.Tx) (signers []sdk.AccAddress, signatures []signing.SignatureV2, err error) {
+func GetSignerAndSignatures(tx sdk.Tx, aggSig *sat.AgAuthData) (signers []sdk.AccAddress, signatures []signing.SignatureV2, err error) {
 	// Attempt to cast the provided transaction to an authsigning.Tx.
 	sigTx, ok := tx.(authsigning.Tx)
 	if !ok {
@@ -76,6 +77,14 @@ func GetSignerAndSignatures(tx sdk.Tx) (signers []sdk.AccAddress, signatures []s
 	signerBytes, err := sigTx.GetSigners()
 	if err != nil {
 		return nil, nil, err
+	}
+
+	if aggSig != nil {
+		// static accAddress for account keys that registered agg authenticator.
+		// Used by all keys in agg key group, we always identify agg keys by their pubkeys .
+		signers = append(signers, sdk.AccAddress(signerBytes[0]))
+		// we expect one signature to have been validated already
+		return signers, signatures, nil
 	}
 
 	for _, signer := range signerBytes {
@@ -128,7 +137,7 @@ func extractExplicitTxData(tx sdk.Tx, signerData authsigning.SignerData) (Explic
 	txMsgs := tx.GetMsgs()
 	msgs := make([]LocalAny, len(txMsgs))
 	for i, txMsg := range txMsgs {
-		encodedMsg, err := types.NewAnyWithValue(txMsg)
+		encodedMsg, err := codectypes.NewAnyWithValue(txMsg)
 		if err != nil {
 			return ExplicitTxData{}, errorsmod.Wrap(err, "failed to encode msg")
 		}
@@ -157,6 +166,7 @@ func extractExplicitTxData(tx sdk.Tx, signerData authsigning.SignerData) (Explic
 // If this tx is making use of Aggregated Signatures,we optionally expect a single aggregated pk & sig, or else we return nothing.
 func extractSignatures(txSigners []sdk.AccAddress, txSignatures []signing.SignatureV2, txData ExplicitTxData, account sdk.AccAddress, replayProtection ReplayProtection, aggEnabled bool) (signatures [][]byte, msgSignature []byte, err error) {
 	if aggEnabled {
+		// check if an aggregated signature was generated and provided offline
 		if len(txSignatures) > 0 {
 			aggregatedSig := txSignatures[0]
 			single, ok := aggregatedSig.Data.(*signing.SingleSignatureData)
@@ -205,27 +215,33 @@ func GenerateAuthenticationRequest(
 	msgIndex int,
 	simulate bool,
 	replayProtection ReplayProtection,
-	extensionSigner *sat.SmartAccountAuth,
+	agAuthData *sat.AgAuthData,
 ) (AuthenticationRequest, error) {
+	var aggEnabled bool
 	var simpleSignatureData = SimplifiedSignatureData{
 		Signers:    make([]sdk.AccAddress, 0),
 		Signatures: make([][]byte, 0),
 	}
-	// Only supporting one signer per message. This will be enforced in sdk v0.50
+	// Only supporting one signer per message in default signer data
 	signers, _, err := cdc.GetMsgV1Signers(msg)
 	if err != nil {
 		return AuthenticationRequest{}, err
 	}
+
+	// either actual signer, or aggregated pubkey & address of account agg pubkeys control.
 	signer := sdk.AccAddress(signers[0])
 	if !signer.Equals(account) {
 		return AuthenticationRequest{}, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "invalid signer")
 	}
+	// Check if this request is using aggregated consensus authentication
+	if agAuthData != nil {
+		if len(agAuthData.Signatures) > 0 {
+			aggEnabled = true
+		}
+	}
 
-	// Get the signers and signatures from the transaction. A signer can only have one signature, so if it
-	// appears in multiple messages, the signatures must be the same, and it will only be returned once by
-	// this function. This is to mimic the way the classic sdk authentication works, and we will probably want
-	// to change this in the future
-	txSigners, txSignatures, err := GetSignerAndSignatures(tx)
+	// Get the signers and signatures from the transaction.
+	txSigners, txSignatures, err := GetSignerAndSignatures(tx, agAuthData)
 	if err != nil {
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get signers and signatures")
 	}
@@ -239,9 +255,6 @@ func GenerateAuthenticationRequest(
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get explicit tx data")
 	}
 
-	// check if TxExtension is using aggregated consensus authentication
-	aggEnabled := extensionSigner != nil && len(extensionSigner.Signatures) > 0
-
 	// Get the signatures for the transaction and execute replay protection.
 	signatures, msgSignature, err := extractSignatures(txSigners, txSignatures, txData, account, replayProtection, aggEnabled)
 	if err != nil {
@@ -249,10 +262,7 @@ func GenerateAuthenticationRequest(
 	}
 
 	if aggEnabled {
-		for i, pk := range extensionSigner.PublicKeys {
-			simpleSignatureData.Signers = append(simpleSignatureData.Signers, pk)
-			simpleSignatureData.Signatures = append(simpleSignatureData.Signatures, extensionSigner.Signatures[i])
-		}
+		// unmarshal
 		// any aggregated
 	} else {
 		simpleSignatureData.Signatures = append(simpleSignatureData.Signatures, signatures...)
@@ -299,4 +309,49 @@ func GenerateAuthenticationRequest(
 func Sha256Msgs(msgs []LocalAny) [32]byte {
 	jsonBytes, _ := json.Marshal(msgs)
 	return sha256.Sum256(jsonBytes)
+}
+
+func MarshalSignatureJSON(sigs []signing.SignatureV2) ([]byte, error) {
+	descs := make([]*signing.SignatureDescriptor, len(sigs))
+
+	for i, sig := range sigs {
+		descData := signing.SignatureDataToProto(sig.Data)
+		any, err := codectypes.NewAnyWithValue(sig.PubKey)
+		if err != nil {
+			return nil, err
+		}
+
+		descs[i] = &signing.SignatureDescriptor{
+			PublicKey: any,
+			Data:      descData,
+			Sequence:  sig.Sequence,
+		}
+	}
+
+	toJSON := &signing.SignatureDescriptors{Signatures: descs}
+
+	return codec.ProtoMarshalJSON(toJSON, nil)
+}
+
+func UnmarshalSignatureJSON(cdc codec.Codec, bz []byte) ([]signing.SignatureV2, error) {
+	var sigDescs signing.SignatureDescriptors
+	err := cdc.UnmarshalJSON(bz, &sigDescs)
+	if err != nil {
+		return nil, err
+	}
+
+	sigs := make([]signing.SignatureV2, len(sigDescs.Signatures))
+	for i, desc := range sigDescs.Signatures {
+		pubKey, _ := desc.PublicKey.GetCachedValue().(cryptotypes.PubKey)
+
+		data := signing.SignatureDataFromProto(desc.Data)
+
+		sigs[i] = signing.SignatureV2{
+			PubKey:   pubKey,
+			Data:     data,
+			Sequence: desc.Sequence,
+		}
+	}
+
+	return sigs, nil
 }

@@ -17,6 +17,8 @@ import (
 
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 
+	"github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
+	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
 	"github.com/bitsongofficial/go-bitsong/x/smart-account/authenticator"
 
 	smartaccounttypes "github.com/bitsongofficial/go-bitsong/x/smart-account/types"
@@ -105,6 +107,45 @@ func (s *BaseAuthenticatorSuite) GenSimpleTx(msgs []sdk.Msg, signers []cryptotyp
 
 }
 
+// Generates a Tx object to use with x/smart-account controlled by an set of keys compatible with aggregation.
+func (s *BaseAuthenticatorSuite) GenSimpleTxBls12381(msgs []sdk.Msg, signers []common.SecretKey, originalPubkey cryptotypes.Address) (sdk.Tx, error) {
+	txconfig := app.MakeEncodingConfig().TxConfig
+	feeCoins := sdk.Coins{sdk.NewInt64Coin("bitsong", 2500)}
+	var accNums []uint64
+	var accSeqs []uint64
+
+	for _, signer := range signers {
+		var account sdk.AccountI
+		acc, err := blst.GetCosmosBlsPubkey(signer)
+		if err != nil {
+			return nil, err
+		}
+
+		account = NewBls12381Account(originalPubkey.String(), acc, 0, 0)
+		fmt.Printf("account: %v\n", account)
+		accNums = append(accNums, account.GetAccountNumber())
+		accSeqs = append(accSeqs, account.GetSequence())
+	}
+
+	tx, err := GenTxBls12381(
+		s.Ctx,
+		txconfig,
+		msgs,
+		feeCoins,
+		300000,
+		"",
+		accNums,
+		accSeqs,
+		signers,
+		signers,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return tx, nil
+
+}
+
 func (s *BaseAuthenticatorSuite) GenSimpleTxWithSelectedAuthenticators(msgs []sdk.Msg, signers []cryptotypes.PrivKey, selectedAuthenticators []uint64) (sdk.Tx, error) {
 	txconfig := app.MakeEncodingConfig().TxConfig
 	feeCoins := sdk.Coins{sdk.NewInt64Coin(appparams.CoinUnit, 2500)}
@@ -157,4 +198,21 @@ func (s *BaseAuthenticatorSuite) GenSimpleTxWithSelectedAuthenticators(msgs []sd
 func (s *BaseAuthenticatorSuite) FundAcc(acc sdk.AccAddress, amounts sdk.Coins) {
 	err := testutil.FundAccount(s.Ctx, s.BitsongApp.BankKeeper, acc, amounts)
 	s.Require().NoError(err)
+}
+
+// NewBls12381Account creates a new BaseAccount object, but within the specs expected for x/smart-account custom authenticator
+// NOTE: Always set `Address`,`AccountNumber` & `Sequence`to the account address that is secured by aggregated keys.
+func NewBls12381Account(address string, pubKey cryptotypes.PubKey, accountNumber, sequence uint64) *authtypes.BaseAccount {
+	acc := &authtypes.BaseAccount{
+		Address:       address,
+		AccountNumber: accountNumber,
+		Sequence:      sequence,
+	}
+
+	err := acc.SetPubKey(pubKey)
+	if err != nil {
+		panic(err)
+	}
+
+	return acc
 }
