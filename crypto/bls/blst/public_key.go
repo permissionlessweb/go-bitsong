@@ -1,5 +1,3 @@
-//go:build ((linux && amd64) || (linux && arm64) || (darwin && amd64) || (darwin && arm64) || (windows && amd64)) && !blst_disabled
-
 package blst
 
 import (
@@ -7,10 +5,14 @@ import (
 
 	"github.com/bitsongofficial/go-bitsong/btsgutils/cache/nonblocking"
 	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/bls12381"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	"github.com/pkg/errors"
+	blst "github.com/supranational/blst/bindings/go"
 )
 
-var maxKeys = 2_000_000
+// max keys in cache
+var maxKeys = 200_000
 var pubkeyCache *nonblocking.LRU[[48]byte, common.PublicKey]
 
 // PublicKey used in the BLS signature scheme.
@@ -118,4 +120,45 @@ func AggregateMultiplePubkeys(pubkeys []common.PublicKey) common.PublicKey {
 	// and take advantage of multi-threading.
 	agg.Aggregate(mulP1, false)
 	return &PublicKey{p: agg.ToAffine()}
+}
+
+// Retrieves the pubkey compatible with the new cosmos bls library, for a given private key defined in this modules internal packages.
+// - Common friction point with working with bls & cosmos account interface
+func GetCosmosBlsPubkey(privKey common.SecretKey) (cryptotypes.PubKey, error) {
+	// Example using tendermint's bls12381 library
+	blsPrivKey, _ := SecretKeyFromBytes(privKey.Marshal())
+	if len(blsPrivKey.Marshal()) != 32 {
+		return nil, errors.New("invalid BLS private key size")
+	}
+	// Derive public key
+	blsPubKey := blsPrivKey.PublicKey()
+
+	// Subgroup check NOT done when decompressing pubkey.
+	p := new(blst.P1Affine).Uncompress(blsPubKey.Marshal())
+	if p == nil {
+		return nil, errors.New("could not Uncompress")
+	}
+
+	// Ensure the public key is in the correct format for Cosmos SDK
+	pk, err := bls12381.NewPublicKeyFromBytes(p.Serialize())
+	if err != nil {
+		return nil, err
+	}
+	return pk, nil
+}
+
+// Retrieves the pubkey compatible with the new cosmos bls library, for a given private key defined in this modules internal packages.
+// - Common friction point with working with bls & cosmos account interface
+func GetCosmosBlsPubkeyFromPubkey(blsPubKey common.PublicKey) (cryptotypes.PubKey, error) {
+	// Subgroup check NOT done when decompressing pubkey.
+	p := new(blst.P1Affine).Uncompress(blsPubKey.Marshal())
+	if p == nil {
+		return nil, errors.New("could not unmarshal bytes into public key")
+	}
+	// Ensure the public key is in the correct format for Cosmos SDK
+	pk, err := bls12381.NewPublicKeyFromBytes(p.Serialize())
+	if err != nil {
+		return nil, err
+	}
+	return pk, nil
 }

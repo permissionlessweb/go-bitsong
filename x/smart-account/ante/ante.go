@@ -65,7 +65,6 @@ func (ad AuthenticatorDecorator) AnteHandle(
 	if err != nil {
 		return sdk.Context{}, err
 	}
-
 	// Performing fee payer authentication with minimal gas allocation
 	// serves as a spam-prevention strategy to prevent users from adding multiple
 	// authenticators that may excessively consume computational resources.
@@ -117,7 +116,7 @@ func (ad AuthenticatorDecorator) AnteHandle(
 	feeGranter := feeTx.FeeGranter()
 	fee := feeTx.GetFee()
 
-	selectedAuthenticators, keysToAggregate, err := ad.GetSelectedAuthenticators(tx, len(msgs))
+	selectedAuthenticators, keysToAggregate, err := ad.GetSelectedAuthenticatorsAndAggSignData(tx, len(msgs))
 	if err != nil {
 		return ctx, err
 	}
@@ -302,10 +301,11 @@ func (ad AuthenticatorDecorator) ValidateAuthenticatorFeePayer(ctx sdk.Context, 
 // It returns an array of selected authenticators or an error if the number of selected authenticators does not match
 // the number of messages in the transaction.
 
-// GetAggregatedSignatures returns the aggregated keys & signatures for the provided transaction extension
-// If no selected authenticators are found in the extension, the function returns an empty array for both, as a defaultsecp256k1 supported signkey.
+//	Returns the aggregated keys & signatures for the provided
+//
+// if no selected authenticators are found in the extension, the function returns an empty array for both, as a defaultsecp256k1 supported signkey.
 // This will depreceate with support from native cosmos-sdk of programmable account auth primitives (currenntly bech32, could hash G1 pubkey to derive 32 byte value, but still would need to access pubkey (assigned light client?))
-func (ad AuthenticatorDecorator) GetSelectedAuthenticators(
+func (ad AuthenticatorDecorator) GetSelectedAuthenticatorsAndAggSignData(
 	tx sdk.Tx,
 	msgCount int,
 ) ([]uint64, *types.SmartAccountAuth, error) {

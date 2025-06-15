@@ -8,15 +8,12 @@ import (
 	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
 )
 
-// Initialize herumi temporarily while we transition to blst for ethdo.
-func init() {
-	// herumi.Init()
-}
+func init() {}
 
 // SecretKeyFromBytes creates a BLS private key from a BigEndian byte slice.
-// func SecretKeyFromBytes(privKey []byte) (SecretKey, error) {
-// 	return blst.SecretKeyFromBytes(privKey)
-// }
+func SecretKeyFromBytes(privKey []byte) (SecretKey, error) {
+	return blst.SecretKeyFromBytes(privKey)
+}
 
 // PublicKeyFromBytes creates a BLS public key from a  BigEndian byte slice.
 func PublicKeyFromBytes(pubKey []byte) (PublicKey, error) {

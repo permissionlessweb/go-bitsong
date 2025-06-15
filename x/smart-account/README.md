@@ -365,8 +365,8 @@ message TxExtension {
   // selected_authenticators holds the authenticator_id for the chosen
   // authenticator per message.
   repeated uint64 selected_authenticators = 1;
-  // smart account that will pay for all msg fees
-  SmartAccountAuth smart_account = 2;
+  // Aggregated auth data if in use of aggregated keys authenticator
+  AgAuthData smart_account = 2;
 }
 ```
 

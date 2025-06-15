@@ -1,10 +1,7 @@
-//go:build ((linux && amd64) || (linux && arm64) || (darwin && amd64) || (darwin && arm64) || (windows && amd64)) && !blst_disabled
-
 package blst
 
 import (
 	"fmt"
-	"runtime"
 
 	"github.com/bitsongofficial/go-bitsong/btsgutils/cache/nonblocking"
 	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
@@ -12,12 +9,8 @@ import (
 )
 
 func init() {
-	// Reserve 1 core for general application work
-	maxProcs := runtime.GOMAXPROCS(0) - 1
-	if maxProcs <= 0 {
-		maxProcs = 1
-	}
-	blst.SetMaxProcs(maxProcs)
+	// Limit blst operations to a single core
+	blst.SetMaxProcs(1)
 	onEvict := func(_ [48]byte, _ common.PublicKey) {}
 	keysCache, err := nonblocking.NewLRU(maxKeys, onEvict)
 	if err != nil {

@@ -57,10 +57,9 @@ message MsgSetActiveState {
 
 message MsgSetActiveStateResponse {}
 
-//  SmartAcccountAuth is a generic array or public keys and signatures
-message SmartAccountAuth {
-  repeated bytes public_keys = 1;
-  repeated bytes signatures = 2;
+// SmartAcccountAuth is an array of signing.SignatureV2 msgs from the G1 public keys.
+message AgAuthData {
+  bytes signatures = 1;
 }
 
 // TxExtension allows for additional authenticator-specific data in
@@ -70,7 +69,15 @@ message TxExtension {
   // authenticator per message.
   repeated uint64 selected_authenticators = 1;
   // smart account that will pay for all msg fees
-  SmartAccountAuth smart_account = 2;
+  AgAuthData smart_account = 2;
+}
+
+// BlsConfig 
+message BlsConfig {
+  // list of pubkeys that are points in aggregate key set
+  repeated bytes pubkeys = 1;
+  // minimum threshold of points in order for tx to be valid
+  uint64 threshold = 2;
 }
 
  

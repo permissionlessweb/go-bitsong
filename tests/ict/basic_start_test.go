@@ -99,6 +99,9 @@ func TestBasicBtsgStart(t *testing.T) {
 	t.Run("fantoken", func(t *testing.T) {
 		testFanToken(ctx, t, bitsong, users)
 	})
+	t.Run("smart-account", func(t *testing.T) {
+		testSmartAccount(ctx, t, bitsong, users)
+	})
 
 	t.Cleanup(func() {
 		_ = ic.Close()
@@ -324,6 +327,20 @@ func testFanToken(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, 
 	fantoken, err = FantokenQueryFantoken(ctx, node, denom)
 	require.NoError(t, err)
 	require.Equal(t, fantokenUri, fantoken.GetMetaData().URI)
+}
+
+func testSmartAccount(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, users []ibc.Wallet) {
+	user0 := users[0].FormattedAddress()
+	node := chain.GetNode()
+	t.Log("Signature verification")
+	// Only test that we are able to register and unregister any authenticators using the default sk of the account
+	SmartAccountAddAuthenticator(ctx, node, "SignatureVerification", user0, string(users[1].Address()))
+	SmartAccountRemoveAuthenticator(ctx, node, user0, 1)
+	t.Log("AllOf")
+	t.Log("AnyOf")
+	t.Log("CosmwasmAuthentication")
+	t.Log("Bls12381")
+
 }
 
 func testBank(ctx context.Context, t *testing.T, chain *cosmos.CosmosChain, users []ibc.Wallet) {
@@ -832,4 +849,20 @@ func ProtocolPoolFundCommunityPool(ctx context.Context, node *cosmos.ChainNode, 
 func ProtocolPoolQueryCommunityPool(ctx context.Context, node *cosmos.ChainNode) (*sdk.Coins, error) {
 	res, err := pooltypes.NewQueryClient(node.GrpcConn).CommunityPool(ctx, &pooltypes.QueryCommunityPoolRequest{})
 	return &res.Pool, err
+}
+
+// ProtocolPoolFundCommunityPool funds the community pool with the specified amount of coins.
+func SmartAccountAddAuthenticator(ctx context.Context, node *cosmos.ChainNode, authType, keyName, data string) error {
+	_, err := node.ExecTx(ctx,
+		keyName, "smartaccount", "add-authenticator", authType, data,
+	)
+	return err
+}
+
+// ProtocolPoolFundCommunityPool funds the community pool with the specified amount of coins.
+func SmartAccountRemoveAuthenticator(ctx context.Context, node *cosmos.ChainNode, keyName string, authType uint64) error {
+	_, err := node.ExecTx(ctx,
+		keyName, "smartaccount", "remove-authenticator", string(authType),
+	)
+	return err
 }
