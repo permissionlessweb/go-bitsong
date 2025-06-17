@@ -139,11 +139,29 @@ func GetCosmosBlsPubkey(privKey common.SecretKey) (cryptotypes.PubKey, error) {
 		return nil, errors.New("could not Uncompress")
 	}
 
+	// p.Print("test")
+	// fmt.Printf("p.InG1(): %v\n", p.InG1())
+
 	// Ensure the public key is in the correct format for Cosmos SDK
 	pk, err := bls12381.NewPublicKeyFromBytes(p.Serialize())
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("len(pk.Key): %v\n", len(pk.Key))
+	fmt.Printf("len(pk.Bytes()): %v\n", len(pk.Bytes()))
+	fmt.Printf("pk.String(): %v\n", pk.String())
+	marshall, err := pk.Marshal()
+	if err != nil {
+		return nil, errors.New("could not marshall")
+	}
+	fmt.Printf("marshall: %v\n", marshall)
+	fmt.Printf("len(marshall): %v\n", len(marshall))
+	marshjson, err := pk.MarshalJSON()
+	if err != nil {
+		return nil, errors.New("could not marshall")
+	}
+	fmt.Printf("marshjson: %v\n", marshjson)
+	fmt.Printf("len(marshjson): %v\n", len(marshjson))
 	return pk, nil
 }
 

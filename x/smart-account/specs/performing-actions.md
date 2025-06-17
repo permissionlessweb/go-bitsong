@@ -36,6 +36,7 @@ An account can have multiple authenticators, each identified by a unique numeric
 
 `TxExtension` is the value expected by this module, in order to identify which authenticator to use, also optionally any pubkeys & signatures used aggregated signature authentication.
 
+
 If there is any data set in `smart_account` object of this modules `TxExtension` accepted, then module forms the `AuthenticationRequest` object in a specfic way for custom authenticators to be built that can authenticate aggregated ECDSA, such as BLS12-381. **If an account is not making use of an aggregated key authenticator, and data is set in this object, any transaction will always fail.**
 
 
@@ -55,7 +56,7 @@ let non_critical_extension_options = vec![Any {
     type_url: "/bitsong.smartaccount.v1beta1.TxExtension".into(),
     value: to_json_binary(&TxExtension { 
         selected_authenticators: vec![1],
-        smart_account: SmartAccountAuthData{signatures:vec!["==35h3jb63"]}
+        agg_auth: SmartAccountAuthData{signatures:vec!["==35h3jb63"]}
         })?.to_vec(),
 }].to_vec();
 
@@ -82,7 +83,6 @@ let wavs_broadcast_msg: TxBody = TxBody {
 - GenSimpleTxBls12381()
     - GenTxBls12381()
     - MakeTxBuilderBls381()
-    - 
 ```
 
 

@@ -5,9 +5,11 @@ import (
 
 	errorsmod "cosmossdk.io/errors"
 	storetypes "cosmossdk.io/store/types"
+	"github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
 	btsgblst "github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
 	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
 	"github.com/bitsongofficial/go-bitsong/x/smart-account/types"
+	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -17,6 +19,7 @@ import (
 // It allows for complex pattern matching to support advanced authentication flows.
 type Bls12381 struct {
 	am       *AuthenticatorManager
+	cdc      codec.Codec
 	storeKey storetypes.StoreKey
 }
 
@@ -43,76 +46,78 @@ func (bls Bls12381) Initialize(cfg []byte) (Authenticator, error) {
 
 func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) error {
 	// Validate input
-	fmt.Printf("req.SignatureData: %v\n", req.SignatureData)
 	fmt.Printf("req.AuthenticatorId: %v\n", req.AuthenticatorId)
+	fmt.Printf("len(req.SignatureData.Signatures): %v\n", len(req.SignatureData.Signatures))
+	fmt.Printf("len(req.SignatureData.Signers): %v\n", len(req.SignatureData.Signers))
 	if len(req.SignatureData.Signatures) == 0 {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no public keys provided")
 	}
-	fmt.Printf("req.TxData.Msgs: %v\n", req.TxData.Msgs)
-	store := ctx.KVStore(bls.storeKey)
+	// ensure threshold is met & keys provided are expected for this authenticator
 	var blsConfig types.BlsConfig
+	store := ctx.KVStore(bls.storeKey)
 	key := types.KeyAccountBlsKeySet(req.Account, req.AuthenticatorId)
-	fmt.Printf("key: %v\n", key)
 	found, err := types.Get(store, key, &blsConfig)
-	if err != nil {
+	if err != nil || !found {
 		return errorsmod.Wrap(err, "failed to get authenticator")
 	}
-	if !found {
-		return fmt.Errorf("could not get key accunt by id & account")
-	}
-
-	// TODO: ensure keys provided are in expected keys array
-	// blsConfig.Pubkeys
 
 	msgDigestHash := Sha256Msgs(req.TxData.Msgs)
 	fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
 
-	providedAggregateSignature, err := btsgblst.SignatureFromBytesNoValidation(req.Signature)
-	if err != nil {
-		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed btsgblst.SignatureFromBytesNoValidatio: %v", err)
-	}
 	// Aggregate public keys
-	var aggb1 [][]byte
-	for i, pubKeyBytes := range req.SignatureData.Signers {
-		if len(pubKeyBytes) == 0 {
-			continue
-		}
+	var g1 [][]byte
+	for i, signer := range req.SignatureData.Signers[1:] {
+		// first sig details is ALWAYS aggregated key, so we skip
+		fmt.Printf("len(sigs): %v\n", len(signer))
 
-		fmt.Printf("len(pubKeyBytes): %v\n", len(pubKeyBytes))
-		pubKey, err := btsgblst.PublicKeyFromBytes(pubKeyBytes.Bytes())
 		if err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed to deserialize public key at index %d: %v", i, err)
 		}
+		pks, _ := blst.PublicKeyFromBytes(signer)
 
+		good, err := btsgblst.VerifySignature(req.SignatureData.Signatures[i], msgDigestHash, pks)
+		fmt.Printf("good: %v\n", good)
+		if err != nil || !good {
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "AHHHHHHHH: %v", err)
+		}
 		// Aggregate public keys (add them in G1)
-		aggb1 = append(aggb1, pubKey.Marshal())
+		g1 = append(g1, signer)
 	}
 
-	var aggb2 []common.Signature
-	for i, signatureBytes := range req.SignatureData.Signatures {
-		if len(signatureBytes) == 0 {
+	var g2 []common.Signature
+	for i, sigBytes := range req.SignatureData.Signatures[1:] {
+		if len(sigBytes) == 0 {
 			continue
 		}
 
-		sig, err := btsgblst.SignatureFromBytes(signatureBytes)
+		sig, err := btsgblst.SignatureFromBytes(sigBytes)
 		if err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed to deserialize wavs operator signature at index %d: %v", i, err)
 		}
-		aggb2 = append(aggb2, sig)
+		g2 = append(g2, sig)
 	}
+
 	// Aggregate Signature
-	aggregatedSignature := btsgblst.AggregateSignatures(aggb2)
-	aggregatedPubkey, err := btsgblst.AggregatePublicKeys(aggb1)
+	// aggregate signature is in default signature location
+	aggregatedSignature := btsgblst.AggregateSignatures(g2)
+	aggregatedPubkey, err := btsgblst.AggregatePublicKeys(g1)
 	if err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "Aggregated Signature Failed: %v", err)
 	}
-	if providedAggregateSignature != aggregatedSignature {
-		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "Aggregated Signature Failed: %v", err)
-	}
 
-	verified, err := btsgblst.VerifySignature(providedAggregateSignature.Marshal(), msgDigestHash, aggregatedPubkey)
-	if err != nil || !verified {
-		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "btsgblst.VerifySignature Failed: %v", err)
+	// providedAggregateSignature, err := btsgblst.SignatureFromBytesNoValidation(req.Signature)
+	// if err != nil {
+	// 	return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed btsgblst.SignatureFromBytesNoValidatio: %v", err)
+	// }
+	// fmt.Printf("aggregatedSignature: %v\n", aggregatedSignature.Marshal())
+	// fmt.Printf("providedAggregateSignature.Marshal(): %v\n", providedAggregateSignature.Marshal())
+	// if providedAggregateSignature != aggregatedSignature {
+	// 	return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "Aggregated Signature Failed: %v", "computed aggregate signature does not match provided aggregate signature")
+	// }
+
+	valid := aggregatedSignature.Verify(aggregatedPubkey, msgDigestHash[:])
+	if !valid {
+		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "btsgblst.VerifySignature Failed: %v", "aggregate signature verification failed")
 	}
 
 	return nil
@@ -144,6 +149,8 @@ func onBls12381Added(ctx sdk.Context, storekey storetypes.StoreKey, account sdk.
 	if len(config.Pubkeys) < int(config.Threshold) {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "must set threshold to atleast to the number of keys, but got %d", config.Threshold)
 	}
+	fmt.Printf("len(account.Bytes()): %v\n", len(account.Bytes()))
+	fmt.Printf("account.Bytes(): %v\n", account.Bytes())
 
 	fmt.Printf("config: %v\n", config)
 	key := types.KeyAccountBlsKeySet(account, authenticatorId)

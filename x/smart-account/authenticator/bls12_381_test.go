@@ -70,34 +70,28 @@ func (s *Bls12381AuthenticatorTest) TestBls12381() {
 
 	for _, tc := range testCases {
 		s.T().Run(tc.name, func(t *testing.T) {
+			cdc := s.BitsongApp.AppCodec()
 
 			secretKeys, blsConfig, err := GenerateBLSPrivateKeysReturnBlsConfig(int(tc.numKeys), tc.threshold, 369)
 			s.Require().NoError(err)
 
-			bzBlsConfig, err := blsConfig.Marshal()
-			s.Require().NoError(err)
-			fmt.Printf("blsConfig: %v\n", blsConfig)
+			txSender := s.TestPrivKeys[0].PubKey().Address()
+			fmt.Printf("txSender: %v\n", txSender)
+			fmt.Printf("secretKeys[0].PublicKey().Marshal(): %v\n", secretKeys[0].PublicKey().Marshal())
+			fmt.Printf("len(secretKeys[0].PublicKey().Marshal()): %v\n", len(secretKeys[0].PublicKey().Marshal()))
 
-			initializedAuth, err := s.Bls12381Auth.Initialize(bzBlsConfig)
+			initializedAuth, err := s.Bls12381Auth.Initialize([]byte{})
 			s.Require().NoError(err)
 			if !tc.expectInit {
 				s.Require().Error(err)
 			} else {
 				s.Require().NoError(err)
 
-				var smartAccAuth *types.AgAuthData
-
 				// Generate authentication request
 				ak := s.BitsongApp.AccountKeeper
-				sigModeHandler := s.EncodingConfig.TxConfig.SignModeHandler()
 
 				// sample msg
 				msg := &bank.MsgSend{FromAddress: s.TestAccAddress[0].String(), ToAddress: "to", Amount: sdk.NewCoins(sdk.NewInt64Coin("foo", 1))}
-				fmt.Printf("msg: %v\n", msg)
-				fmt.Println(msg.Marshal())
-
-				bzConfig, err := blsConfig.Marshal()
-				s.Require().NoError(err)
 
 				// digest msg into hash being signed
 				msgsToHash := []sdk.Msg{msg}
@@ -109,41 +103,51 @@ func (s *Bls12381AuthenticatorTest) TestBls12381() {
 						Value:   anyMsg.Value,
 					})
 				}
-				// TODO: REMOVE ONCE TESTING IS DONE, JUST TESTING SHA FUNCTIONS
-				anyMsgs = append(anyMsgs, authenticator.LocalAny{
-					TypeURL: "test",
-					Value:   anyMsgs[0].Value,
-				})
-				hash := authenticator.Sha256Msgs(anyMsgs)
+
+				msgDigestHash := authenticator.Sha256Msgs(anyMsgs)
+				fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
 
 				// Sign the message with the keys
-				smartAccTxExtension, err := SignMessageWithTestBls12Keys(s.EncodingConfig.TxConfig, hash[:], secretKeys)
+				agAuthData, err := SignMessageWithTestBls12Keys(s.EncodingConfig.TxConfig, msgDigestHash[:], secretKeys)
 				s.Require().NoError(err)
 
 				// omit inclusion
+				var smartAccAuth *types.AgAuthData
 				if tc.includeTxExt {
-					smartAccAuth = smartAccTxExtension
+					smartAccAuth = agAuthData
 				}
-
-				//  todo: aggregate pubkey
-				if tc.includeAggPkSig {
-				}
+				// fmt.Printf("smartAccAuth: %v\n", smartAccAuth)
+				// //  todo: aggregate pubkey
+				// if tc.includeAggPkSig {}
 
 				// sample tx
-				tx, err := s.GenSimpleTxBls12381(msgsToHash, secretKeys, s.TestPrivKeys[0].PubKey().Address())
+				tx, err := s.GenSimpleTxBls12381(msgsToHash, secretKeys, txSender)
 				s.Require().NoError(err)
 
-				cdc := s.BitsongApp.AppCodec()
-				fmt.Printf("smartAccAuth: %v\n", smartAccAuth)
-				fmt.Printf("hash: %v\n", hash)
-				//  pass msgs based on test instance
-				request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, cdc, ak, sigModeHandler, s.TestAccAddress[0], s.TestAccAddress[0], nil, sdk.NewCoins(), msg, tx, 0, false, authenticator.SequenceMatch, smartAccAuth)
+				// pass msgs based on test instance
+				request, err := authenticator.GenerateAuthenticationRequest(
+					s.Ctx, cdc, ak,
+					s.EncodingConfig.TxConfig.SignModeHandler(),
+					s.TestAccAddress[0], s.TestAccAddress[0],
+					nil, sdk.NewCoins(),
+					msg, tx,
+					0, false,
+					authenticator.SequenceMatch,
+					smartAccAuth,
+				)
 				s.Require().NoError(err)
-				fmt.Printf("request.SignatureData: %v\n", request.SignatureData)
+
+				sign, err := request.SignatureData.Signers[0].Marshal()
+				fmt.Printf("request.SignatureData: %v\n", sign)
 				request.AuthenticatorId = "1"
 
+				fmt.Printf("request.Account.String(): %v\n", request.Account.String())
+				fmt.Printf("len(request.Account): %v\n", len(request.Account))
 				// Attempt to authenticate using initialized authenticator
-				err = initializedAuth.OnAuthenticatorAdded(s.Ctx, request.Account, bzConfig, request.AuthenticatorId)
+				bzBlsConfig, err := blsConfig.Marshal()
+				s.Require().NoError(err)
+				fmt.Printf("blsConfig: %v\n", blsConfig)
+				err = initializedAuth.OnAuthenticatorAdded(s.Ctx, request.Account, bzBlsConfig, request.AuthenticatorId)
 				s.Require().NoError(err)
 				err = initializedAuth.Authenticate(s.Ctx, request)
 				fmt.Printf("err: %v\n", err)
@@ -212,8 +216,6 @@ func SignMessageWithTestBls12Keys(gen client.TxConfig, msgHash []byte, secretKey
 		if sig == nil {
 			return nil, fmt.Errorf("failed to sk.Sign %d", i)
 		}
-
-		fmt.Printf("sk.PublicKey().Marshal(): %v\n", sk.PublicKey().Marshal())
 		pubkey, err := btsgblst.GetCosmosBlsPubkeyFromPubkey(sk.PublicKey())
 		if err != nil { // Fix: check err != nil
 			return nil, fmt.Errorf("failed to NewPublicKeyFromBytes %d: %w", i, err)
@@ -237,6 +239,5 @@ func SignMessageWithTestBls12Keys(gen client.TxConfig, msgHash []byte, secretKey
 		return nil, fmt.Errorf("failed to marshal signatures: %w", err)
 	}
 	auth.Data = signBz
-
 	return auth, nil
 }

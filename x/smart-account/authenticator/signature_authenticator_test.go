@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	signingv1beta1 "cosmossdk.io/api/cosmos/tx/signing/v1beta1"
-	txsigning "cosmossdk.io/x/tx/signing"
 	"github.com/cosmos/cosmos-sdk/client"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
@@ -16,9 +14,9 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/simulation"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
+	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/stretchr/testify/suite"
-	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/bitsongofficial/go-bitsong/app"
 	"github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
@@ -424,7 +422,7 @@ func MakeTxBuilderBls381(
 	}
 
 	cosmosSigs := make([]signing.SignatureV2, len(signatures))
-	pk := make([]common.PublicKey, 0)
+	pks := make([]common.PublicKey, 0)
 	sigsInside := make([]common.Signature, 0)
 
 	// Create a random length memo
@@ -435,14 +433,7 @@ func MakeTxBuilderBls381(
 		return nil, fmt.Errorf("failed to convert sign mode: %v", err)
 	}
 
-	// supportedModes := gen.SignModeHandler().SupportedModes()
-	// fmt.Printf("supportedModes: %v\n", supportedModes)
-	// if ok := supportedModes[signingv1beta1.SignMode(signMode)]; ok == nil {
-	// 	return nil, fmt.Errorf("sign mode %v not supported by SignModeHandler", signMode)
-	// }
-
 	// 1st round: set SignatureV2 with derived public keys and empty signatures
-
 	for i, privKey := range signers {
 		pubKey, err := blst.GetCosmosBlsPubkey(privKey)
 		if err != nil {
@@ -460,15 +451,14 @@ func MakeTxBuilderBls381(
 			},
 			Sequence: accSeqs[i],
 		}
-		pk = append(pk, privKey.PublicKey())
+		pks = append(pks, privKey.PublicKey())
 	}
 
-	tx := gen.NewTxBuilder()
-	extx, ok := tx.(client.ExtendedTxBuilder)
+	// used to set the non_critical_tx_extenaion
+	tx, ok := gen.NewTxBuilder().(authtx.ExtensionOptionsTxBuilder)
 	if !ok {
 		return nil, fmt.Errorf("failed to use ExtendTxBuilder interface: %v", err)
 	}
-
 	err = tx.SetMsgs(msgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set messages: %v", err)
@@ -483,92 +473,110 @@ func MakeTxBuilderBls381(
 	if txObj == nil {
 		return nil, fmt.Errorf("tx.GetTx() returned nil")
 	}
-	// fmt.Printf("tx.GetTx(): %+v\n", txObj)
 
 	// Verify V2AdaptableTx implementation
-	adaptableTx, ok := txObj.(authsigning.V2AdaptableTx)
-	if !ok {
-		return nil, fmt.Errorf("tx does not implement V2AdaptableTx, got %T", txObj)
+	// adaptableTx, ok := txObj.(authsigning.V2AdaptableTx)
+	// if !ok {
+	// 	return nil, fmt.Errorf("tx does not implement V2AdaptableTx, got %T", txObj)
+	// }
+	// txData := adaptableTx.GetSigningTxData()
+
+	var anyMsgs []authenticator.LocalAny
+	for _, in := range msgs {
+		anyMsg, _ := codectypes.NewAnyWithValue(in)
+		anyMsgs = append(anyMsgs, authenticator.LocalAny{
+			TypeURL: anyMsg.TypeUrl,
+			Value:   anyMsg.Value,
+		})
 	}
-	txData := adaptableTx.GetSigningTxData()
-	// fmt.Printf("txData: %+v\n", txData)
 
-	// 2nd round: sign the transaction
+	msgDigestHash := authenticator.Sha256Msgs(anyMsgs)
+
+	fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
+	fmt.Printf("len(signatures): %v\n", len(signatures))
+
+	// 2nd round: add the signatures into the signer
 	for i, p := range signatures {
-		signerData := authsigning.SignerData{
-			ChainID:       chainID,
-			AccountNumber: accNums[i],
-			Sequence:      accSeqs[i],
-		}
+		// var pubKey *anypb.Any
+		// signerData := authsigning.SignerData{
+		// 	ChainID:       chainID,
+		// 	AccountNumber: accNums[i],
+		// 	Sequence:      accSeqs[i],
+		// }
 
-		var pubKey *anypb.Any
-		if cosmosSigs[i].PubKey != nil {
-			cosmosPubkey, err := blst.GetCosmosBlsPubkey(p)
-			anyPk, err := codectypes.NewAnyWithValue(cosmosPubkey)
-			if err != nil {
-				return nil, fmt.Errorf("failed to GetCosmosBlsPubkey %d: %v", i, err)
-			}
-			if err != nil {
-				return nil, fmt.Errorf("failed to encode public key for signer %d: %v", i, err)
-			}
-			pubKey = &anypb.Any{
-				TypeUrl: anyPk.TypeUrl,
-				Value:   anyPk.Value,
-			}
-		}
+		// if cosmosSigs[i].PubKey != nil {
+		// 	cosmosPubkey, err := blst.GetCosmosBlsPubkey(p)
+		// 	fmt.Printf("len(cosmosPubkey.Bytes()): %v\n", len(cosmosPubkey.Bytes()))
+		// 	anyPk, err := codectypes.NewAnyWithValue(cosmosPubkey)
+		// 	if err != nil {
+		// 		return nil, fmt.Errorf("failed to GetCosmosBlsPubkey %d: %v", i, err)
+		// 	}
+		// 	if err != nil {
+		// 		return nil, fmt.Errorf("failed to encode public key for signer %d: %v", i, err)
+		// 	}
+		// 	fmt.Printf("len(anyPk.Value): %v\n", len(anyPk.Value))
+		// 	pubKey = &anypb.Any{
+		// 		TypeUrl: anyPk.TypeUrl,
+		// 		Value:   anyPk.Value,
+		// 	}
+		// }
 
-		txSignerData := txsigning.SignerData{
-			ChainID:       signerData.ChainID,
-			AccountNumber: signerData.AccountNumber,
-			Sequence:      signerData.Sequence,
-			PubKey:        pubKey,
-		}
+		// txSignerData := txsigning.SignerData{
+		// 	ChainID:       signerData.ChainID,
+		// 	AccountNumber: signerData.AccountNumber,
+		// 	Sequence:      signerData.Sequence,
+		// 	PubKey:        pubKey,
+		// }
 
 		// gets the value to sign
-		signBytes, err := gen.SignModeHandler().GetSignBytes(ctx, signingv1beta1.SignMode(signMode), txSignerData, txData)
+		// signBytes, err := gen.SignModeHandler().GetSignBytes(ctx, signingv1beta1.SignMode(signMode), txSignerData, txData)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("failed to get sign bytes for signer %d: %v", i, err)
+		// }
+		// if signBytes == nil {
+		// 	return nil, fmt.Errorf("GetSignBytes returned nil for signer %d", i)
+		// }
 
-		if err != nil {
-			return nil, fmt.Errorf("failed to get sign bytes for signer %d: %v", i, err)
-		}
-		if signBytes == nil {
-			return nil, fmt.Errorf("GetSignBytes returned nil for signer %d", i)
-		}
-
-		sig := p.Sign(signBytes)
+		sig := p.Sign(msgDigestHash[:])
 		cosmosSigs[i].Data.(*signing.SingleSignatureData).Signature = sig.Marshal()
-		fmt.Printf("cosmosSigs[i].Data: %v\n", cosmosSigs[i].Data)
 		sigsInside = append(sigsInside, sig)
+
 	}
 
-	// Set the signature details into the TxExtension
 	authExtSignature, err := gen.MarshalSignatureJSON(cosmosSigs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set messages: %v", err)
 	}
-
+	// Set the signature details into the TxExtension
 	txExtensionData := &smartaccounttypes.TxExtension{
 		SelectedAuthenticators: []uint64{1},
-		SmartAccount: &smartaccounttypes.AgAuthData{
+		AggAuth: &smartaccounttypes.AgAuthData{
 			Data: authExtSignature,
 		},
 	}
+
+	// set all keys into non critical-extensions
 	extOpts, err := codectypes.NewAnyWithValue(txExtensionData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to set messages: %v", err)
+		return nil, fmt.Errorf("failed to txExtensionData NewAnyWithValue: %v", err)
 	}
+	tx.SetNonCriticalExtensionOptions(extOpts)
 
-	// aggregate signatures & pubkey, set into signature options
-	fmt.Printf("pk: %v\n", pk[0])
-	aggPubkeys := blst.AggregateMultiplePubkeys(pk)
-	fmt.Printf("aggPubkeys: %v\n", aggPubkeys)
-
+	// aggregate signatures & pubkey, set into default signature options
+	aggPubkeys := blst.AggregateMultiplePubkeys(pks)
 	aggPubkey, err := blst.GetCosmosBlsPubkeyFromPubkey(aggPubkeys)
 	if err != nil {
 		return nil, fmt.Errorf("failed to blst.GetCosmosBlsPubkeyFromPubkey: %v", err)
 	}
-	fmt.Printf("aggPubkey: %v\n", aggPubkey)
 	aggSig := blst.AggregateSignatures(sigsInside)
-	extx.SetExtensionOptions(extOpts)
+
+	// fmt.Printf("pks: %v\n", pks[0].Marshal())
+	// fmt.Printf("aggPubkeys: %v\n", aggPubkeys.Marshal())
+	// fmt.Printf("aggPubkey: %v\n", aggPubkey)
+	// fmt.Printf("aggSig: %v\n", aggSig)
+	// fmt.Printf("len(aggSig.Marshal()): %v\n", len(aggSig.Marshal()))
+
+	// set aggregated key into default signing options
 	err = tx.SetSignatures(signing.SignatureV2{
 		PubKey: aggPubkey,
 		Data: &signing.SingleSignatureData{
@@ -580,12 +588,6 @@ func MakeTxBuilderBls381(
 	if err != nil {
 		return nil, fmt.Errorf("failed to set final signatures: %v", err)
 	}
-
-	sigTx, ok := tx.(authsigning.Tx)
-	pubkeys, _ := sigTx.GetPubKeys()
-	fmt.Printf("pubkeys: %v\n", pubkeys)
-
-	tx.GetTx()
 
 	return tx, nil
 }

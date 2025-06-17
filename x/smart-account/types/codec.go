@@ -12,7 +12,7 @@ var _ AuthenticatorTxOptions = (*TxExtension)(nil) // Compile-time check
 // AuthenticatorTxOptions
 type AuthenticatorTxOptions interface {
 	GetSelectedAuthenticators() []uint64
-	GetSmartAccount() *AgAuthData
+	GetAggAuth() *AgAuthData
 }
 
 func RegisterCodec(cdc *codec.LegacyAmino) {

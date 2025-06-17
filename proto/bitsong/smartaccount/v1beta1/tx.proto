@@ -71,8 +71,8 @@ message TxExtension {
   // selected_authenticators holds the authenticator_id for the chosen
   // authenticator per message.
   repeated uint64 selected_authenticators = 1;
-  // smart account that will pay for all msg fees
-  AgAuthData smart_account = 2;
+  // optional, used to provide aggregate key signature data to module for authentication.
+  AgAuthData agg_auth = 2;
 }
 
 // BlsConfig 

@@ -322,7 +322,8 @@ func (ad AuthenticatorDecorator) GetSelectedAuthenticatorsAndAggSignData(
 	}
 	// Retrieve the selected authenticators from the extension.
 	selectedAuthenticators := txOptions.GetSelectedAuthenticators()
-	keysToAggregate := txOptions.GetSmartAccount()
+	keysToAggregate := txOptions.GetAggAuth()
+
 	if len(selectedAuthenticators) != msgCount {
 		// Return an error if the number of selected authenticators does not match the number of messages.
 		return nil, nil, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest,
