@@ -92,10 +92,10 @@ func GetSignerAndSignatures(cdc codec.Codec, tx sdk.Tx, aggSig *sat.AgAuthData) 
 		signers = append(signers, sdk.AccAddress(signerBytes[0]))
 
 		for _, singed := range aggregatedAuthData {
-			fmt.Printf("singed.PubKey.Bytes(): %v\n", singed.PubKey.Bytes())
-			fmt.Printf("len(singed.PubKey.Bytes()): %v\n", len(singed.PubKey.Bytes()))
-			fmt.Printf("len(singed.PubKey.Address().Bytes()): %v\n", len(singed.PubKey.Address().Bytes()))
-			fmt.Printf("singed.PubKey.Address(): %v\n", singed.PubKey.Address())
+			// fmt.Printf("singed.PubKey.Bytes(): %v\n", singed.PubKey.Bytes())
+			// fmt.Printf("len(singed.PubKey.Bytes()): %v\n", len(singed.PubKey.Bytes()))
+			// fmt.Printf("len(singed.PubKey.Address().Bytes()): %v\n", len(singed.PubKey.Address().Bytes()))
+			// fmt.Printf("singed.PubKey.Address(): %v\n", singed.PubKey.Address())
 			fmt.Println(singed.PubKey.Address().Marshal())
 			// add signer
 			signers = append(signers, sdk.AccAddress(singed.PubKey.Bytes()))
@@ -237,7 +237,7 @@ func GenerateAuthenticationRequest(
 	if err != nil {
 		return AuthenticationRequest{}, err
 	}
-	fmt.Printf("signers: %v\n", signers)
+	// fmt.Printf("signers: %v\n", signers)
 
 	// either actual signer, or aggregated pubkey & address of account agg pubkeys control.
 	signer := sdk.AccAddress(signers[0])
@@ -250,14 +250,14 @@ func GenerateAuthenticationRequest(
 	if err != nil {
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get signers and signatures")
 	}
-	fmt.Printf("txSigners: %v\n", txSigners)
-	fmt.Printf("len(txSigners): %v\n", len(txSigners))
-	fmt.Printf("txSignatures: %v\n", txSignatures)
-	fmt.Printf("len(txSignatures): %v\n", len(txSignatures))
+	// fmt.Printf("txSigners: %v\n", txSigners)
+	// fmt.Printf("len(txSigners): %v\n", len(txSigners))
+	// fmt.Printf("txSignatures: %v\n", txSignatures)
+	// fmt.Printf("len(txSignatures): %v\n", len(txSignatures))
 
 	// Get the signer data for the account. This is needed in the SignDoc
 	signerData := getSignerData(ctx, ak, account)
-	fmt.Printf("signerData: %v\n", signerData)
+	// fmt.Printf("signerData: %v\n", signerData)
 
 	// Get the concrete transaction data to be passed to the authenticators
 	txData, err := extractExplicitTxData(tx, signerData)
@@ -275,8 +275,8 @@ func GenerateAuthenticationRequest(
 	simpleSignatureData.Signatures = append(simpleSignatureData.Signatures, signatures...)
 	simpleSignatureData.Signers = append(simpleSignatureData.Signers, txSigners...)
 
-	fmt.Printf("len(simpleSignatureData.Signatures): %v\n", len(simpleSignatureData.Signatures))
-	fmt.Printf("len(simpleSignatureData.Signers): %v\n", len(simpleSignatureData.Signers))
+	// fmt.Printf("len(simpleSignatureData.Signatures): %v\n", len(simpleSignatureData.Signatures))
+	// fmt.Printf("len(simpleSignatureData.Signers): %v\n", len(simpleSignatureData.Signers))
 
 	// Build the authentication request
 	authRequest := AuthenticationRequest{
@@ -334,7 +334,7 @@ func MarshalSignatureJSON(sigs []signing.SignatureV2) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		fmt.Printf("any: %v\n", any)
+		// fmt.Printf("any: %v\n", any)
 		descs[i] = &signing.SignatureDescriptor{
 			PublicKey: any,
 			Data:      descData,

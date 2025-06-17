@@ -492,8 +492,8 @@ func MakeTxBuilderBls381(
 
 	msgDigestHash := authenticator.Sha256Msgs(anyMsgs)
 
-	fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
-	fmt.Printf("len(signatures): %v\n", len(signatures))
+	// fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
+	// fmt.Printf("len(signatures): %v\n", len(signatures))
 
 	// 2nd round: add the signatures into the signer
 	for i, p := range signatures {
@@ -506,7 +506,7 @@ func MakeTxBuilderBls381(
 
 		// if cosmosSigs[i].PubKey != nil {
 		// 	cosmosPubkey, err := blst.GetCosmosBlsPubkey(p)
-		// 	fmt.Printf("len(cosmosPubkey.Bytes()): %v\n", len(cosmosPubkey.Bytes()))
+		// 	// fmt.Printf("len(cosmosPubkey.Bytes()): %v\n", len(cosmosPubkey.Bytes()))
 		// 	anyPk, err := codectypes.NewAnyWithValue(cosmosPubkey)
 		// 	if err != nil {
 		// 		return nil, fmt.Errorf("failed to GetCosmosBlsPubkey %d: %v", i, err)
@@ -514,7 +514,7 @@ func MakeTxBuilderBls381(
 		// 	if err != nil {
 		// 		return nil, fmt.Errorf("failed to encode public key for signer %d: %v", i, err)
 		// 	}
-		// 	fmt.Printf("len(anyPk.Value): %v\n", len(anyPk.Value))
+		// 	// fmt.Printf("len(anyPk.Value): %v\n", len(anyPk.Value))
 		// 	pubKey = &anypb.Any{
 		// 		TypeUrl: anyPk.TypeUrl,
 		// 		Value:   anyPk.Value,
@@ -570,11 +570,11 @@ func MakeTxBuilderBls381(
 	}
 	aggSig := blst.AggregateSignatures(sigsInside)
 
-	// fmt.Printf("pks: %v\n", pks[0].Marshal())
-	// fmt.Printf("aggPubkeys: %v\n", aggPubkeys.Marshal())
-	// fmt.Printf("aggPubkey: %v\n", aggPubkey)
-	// fmt.Printf("aggSig: %v\n", aggSig)
-	// fmt.Printf("len(aggSig.Marshal()): %v\n", len(aggSig.Marshal()))
+	// // fmt.Printf("pks: %v\n", pks[0].Marshal())
+	// // fmt.Printf("aggPubkeys: %v\n", aggPubkeys.Marshal())
+	// // fmt.Printf("aggPubkey: %v\n", aggPubkey)
+	// // fmt.Printf("aggSig: %v\n", aggSig)
+	// // fmt.Printf("len(aggSig.Marshal()): %v\n", len(aggSig.Marshal()))
 
 	// set aggregated key into default signing options
 	err = tx.SetSignatures(signing.SignatureV2{

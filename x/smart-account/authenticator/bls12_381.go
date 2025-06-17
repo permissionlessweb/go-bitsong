@@ -1,7 +1,7 @@
 package authenticator
 
 import (
-	"fmt"
+	"bytes"
 
 	errorsmod "cosmossdk.io/errors"
 	storetypes "cosmossdk.io/store/types"
@@ -46,12 +46,9 @@ func (bls Bls12381) Initialize(cfg []byte) (Authenticator, error) {
 
 func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) error {
 	// Validate input
-	fmt.Printf("req.AuthenticatorId: %v\n", req.AuthenticatorId)
-	fmt.Printf("len(req.SignatureData.Signatures): %v\n", len(req.SignatureData.Signatures))
-	fmt.Printf("len(req.SignatureData.Signers): %v\n", len(req.SignatureData.Signers))
-	if len(req.SignatureData.Signatures) == 0 {
-		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no public keys provided")
-	}
+	// fmt.Printf("req.AuthenticatorId: %v\n", req.AuthenticatorId)
+	// fmt.Printf("len(req.SignatureData.Signatures): %v\n", len(req.SignatureData.Signatures))
+	// fmt.Printf("len(req.SignatureData.Signers): %v\n", len(req.SignatureData.Signers))
 	// ensure threshold is met & keys provided are expected for this authenticator
 	var blsConfig types.BlsConfig
 	store := ctx.KVStore(bls.storeKey)
@@ -60,23 +57,31 @@ func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) err
 	if err != nil || !found {
 		return errorsmod.Wrap(err, "failed to get authenticator")
 	}
+	// ensure threshold has been met
+	if blsConfig.Threshold+1 < uint64(len(req.SignatureData.Signatures)) {
+		return errorsmod.Wrap(err, "aggregate signature threshold not satisfied")
+
+	}
 
 	msgDigestHash := Sha256Msgs(req.TxData.Msgs)
-	fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
+	// fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
 
 	// Aggregate public keys
 	var g1 [][]byte
 	for i, signer := range req.SignatureData.Signers[1:] {
 		// first sig details is ALWAYS aggregated key, so we skip
-		fmt.Printf("len(sigs): %v\n", len(signer))
-
+		// fmt.Printf("len(sigs): %v\n", len(signer))
+		validPoint := checkPubkeyExistence(&blsConfig, signer)
+		if !validPoint {
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "aggregate key is not valid point %d: %v", i, err)
+		}
 		if err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed to deserialize public key at index %d: %v", i, err)
 		}
 		pks, _ := blst.PublicKeyFromBytes(signer)
 
 		good, err := btsgblst.VerifySignature(req.SignatureData.Signatures[i], msgDigestHash, pks)
-		fmt.Printf("good: %v\n", good)
+		// fmt.Printf("good: %v\n", good)
 		if err != nil || !good {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "AHHHHHHHH: %v", err)
 		}
@@ -109,8 +114,8 @@ func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) err
 	// if err != nil {
 	// 	return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed btsgblst.SignatureFromBytesNoValidatio: %v", err)
 	// }
-	// fmt.Printf("aggregatedSignature: %v\n", aggregatedSignature.Marshal())
-	// fmt.Printf("providedAggregateSignature.Marshal(): %v\n", providedAggregateSignature.Marshal())
+	// // fmt.Printf("aggregatedSignature: %v\n", aggregatedSignature.Marshal())
+	// // fmt.Printf("providedAggregateSignature.Marshal(): %v\n", providedAggregateSignature.Marshal())
 	// if providedAggregateSignature != aggregatedSignature {
 	// 	return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "Aggregated Signature Failed: %v", "computed aggregate signature does not match provided aggregate signature")
 	// }
@@ -137,7 +142,7 @@ func (bls Bls12381) OnAuthenticatorAdded(ctx sdk.Context, account sdk.AccAddress
 }
 
 func (bls Bls12381) OnAuthenticatorRemoved(ctx sdk.Context, account sdk.AccAddress, config []byte, authenticatorId string) error {
-	return onSubAuthenticatorsRemoved(ctx, account, config, authenticatorId, bls.am)
+	return onBls12381Removed(ctx, bls.storeKey, account, authenticatorId)
 }
 
 func onBls12381Added(ctx sdk.Context, storekey storetypes.StoreKey, account sdk.AccAddress, data []byte, authenticatorId string, am *AuthenticatorManager) error {
@@ -147,17 +152,25 @@ func onBls12381Added(ctx sdk.Context, storekey storetypes.StoreKey, account sdk.
 	}
 
 	if len(config.Pubkeys) < int(config.Threshold) {
-		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "must set threshold to atleast to the number of keys, but got %d", config.Threshold)
+		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "must set threshold to atleast to the number of keys: %d", config.Threshold)
 	}
-	fmt.Printf("len(account.Bytes()): %v\n", len(account.Bytes()))
-	fmt.Printf("account.Bytes(): %v\n", account.Bytes())
 
-	fmt.Printf("config: %v\n", config)
 	key := types.KeyAccountBlsKeySet(account, authenticatorId)
-	fmt.Printf("key: %v\n", key)
 	types.MustSet(ctx.KVStore(storekey), key, &config)
-
-	// If not all sub-authenticators are registered, return an error
-
 	return nil
+
+}
+func onBls12381Removed(ctx sdk.Context, storekey storetypes.StoreKey, account sdk.AccAddress, authenticatorId string) error {
+	key := types.KeyAccountBlsKeySet(account, authenticatorId)
+	ctx.KVStore(storekey).Delete(key)
+	return nil
+}
+
+func checkPubkeyExistence(blsConfig *types.BlsConfig, pubkey []byte) bool {
+	for _, pk := range blsConfig.Pubkeys {
+		if bytes.Equal(pk, pubkey) {
+			return true
+		}
+	}
+	return false
 }

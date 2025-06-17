@@ -122,8 +122,8 @@ func (s *BaseAuthenticatorSuite) GenSimpleTxBls12381(msgs []sdk.Msg, signers []c
 		}
 
 		account = NewBls12381Account(originalPubkey.String(), acc, 0, 0)
-		fmt.Printf("account: %v\n", account)
-		fmt.Printf("len(account.GetPubKey().Bytes()): %v\n", len(account.GetPubKey().Bytes()))
+		// fmt.Printf("account: %v\n", account)
+		// fmt.Printf("len(account.GetPubKey().Bytes()): %v\n", len(account.GetPubKey().Bytes()))
 
 		accNums = append(accNums, account.GetAccountNumber())
 		accSeqs = append(accSeqs, account.GetSequence())

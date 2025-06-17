@@ -76,9 +76,9 @@ func (s *Bls12381AuthenticatorTest) TestBls12381() {
 			s.Require().NoError(err)
 
 			txSender := s.TestPrivKeys[0].PubKey().Address()
-			fmt.Printf("txSender: %v\n", txSender)
-			fmt.Printf("secretKeys[0].PublicKey().Marshal(): %v\n", secretKeys[0].PublicKey().Marshal())
-			fmt.Printf("len(secretKeys[0].PublicKey().Marshal()): %v\n", len(secretKeys[0].PublicKey().Marshal()))
+			// fmt.Printf("txSender: %v\n", txSender)
+			// fmt.Printf("secretKeys[0].PublicKey().Marshal(): %v\n", secretKeys[0].PublicKey().Marshal())
+			// fmt.Printf("len(secretKeys[0].PublicKey().Marshal()): %v\n", len(secretKeys[0].PublicKey().Marshal()))
 
 			initializedAuth, err := s.Bls12381Auth.Initialize([]byte{})
 			s.Require().NoError(err)
@@ -105,7 +105,7 @@ func (s *Bls12381AuthenticatorTest) TestBls12381() {
 				}
 
 				msgDigestHash := authenticator.Sha256Msgs(anyMsgs)
-				fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
+				// fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
 
 				// Sign the message with the keys
 				agAuthData, err := SignMessageWithTestBls12Keys(s.EncodingConfig.TxConfig, msgDigestHash[:], secretKeys)
@@ -116,7 +116,7 @@ func (s *Bls12381AuthenticatorTest) TestBls12381() {
 				if tc.includeTxExt {
 					smartAccAuth = agAuthData
 				}
-				// fmt.Printf("smartAccAuth: %v\n", smartAccAuth)
+				// // fmt.Printf("smartAccAuth: %v\n", smartAccAuth)
 				// //  todo: aggregate pubkey
 				// if tc.includeAggPkSig {}
 
@@ -137,26 +137,25 @@ func (s *Bls12381AuthenticatorTest) TestBls12381() {
 				)
 				s.Require().NoError(err)
 
-				sign, err := request.SignatureData.Signers[0].Marshal()
-				fmt.Printf("request.SignatureData: %v\n", sign)
+				// sign, err := request.SignatureData.Signers[0].Marshal()
+				// fmt.Printf("request.SignatureData: %v\n", sign)
 				request.AuthenticatorId = "1"
 
-				fmt.Printf("request.Account.String(): %v\n", request.Account.String())
-				fmt.Printf("len(request.Account): %v\n", len(request.Account))
+				// fmt.Printf("request.Account.String(): %v\n", request.Account.String())
+				// fmt.Printf("len(request.Account): %v\n", len(request.Account))
 				// Attempt to authenticate using initialized authenticator
 				bzBlsConfig, err := blsConfig.Marshal()
 				s.Require().NoError(err)
-				fmt.Printf("blsConfig: %v\n", blsConfig)
+				// fmt.Printf("blsConfig: %v\n", blsConfig)
 				err = initializedAuth.OnAuthenticatorAdded(s.Ctx, request.Account, bzBlsConfig, request.AuthenticatorId)
 				s.Require().NoError(err)
 				err = initializedAuth.Authenticate(s.Ctx, request)
-				fmt.Printf("err: %v\n", err)
+				// fmt.Printf("err: %v\n", err)
 				s.Require().Equal(tc.expectSuccessful, err == nil)
 				err = initializedAuth.Track(s.Ctx, request)
 				s.Require().NoError(err)
 				err = initializedAuth.ConfirmExecution(s.Ctx, request)
 				s.Require().Equal(tc.expectConfirm, err == nil)
-
 			}
 		})
 	}
@@ -183,8 +182,10 @@ func GenerateBLSPrivateKeysReturnBlsConfig(n int, threshold uint64, seed int64) 
 		}
 
 		secretKeys[i] = secretKey
+		pubkeys[i] = secretKey.PublicKey().Marshal()
 
 	}
+	// fmt.Printf("pubkeys: %v\n", pubkeys)
 	return secretKeys, types.BlsConfig{
 		Pubkeys:   pubkeys,
 		Threshold: threshold,
@@ -233,7 +234,7 @@ func SignMessageWithTestBls12Keys(gen client.TxConfig, msgHash []byte, secretKey
 	}
 
 	// Marshal the signatures array into bytes
-	fmt.Printf("sigs: %v\n", sigs)
+	// fmt.Printf("sigs: %v\n", sigs)
 	signBz, err := authenticator.MarshalSignatureJSON(sigs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal signatures: %w", err)
