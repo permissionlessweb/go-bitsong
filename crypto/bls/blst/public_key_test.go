@@ -29,6 +29,7 @@ func TestPubKey_MarshalJSON(t *testing.T) {
 	err = pubKey2.UnmarshalJSON(jsonBytes)
 	require.NoError(t, err)
 
+	// fmt.Printf("len(pubKey2.Key.Serialize()): %v\n", len(pubKey2.Key))
 	// assert we can transcode pubkeys between cosmos-sdk & our libary
 	pubkey3, err := blst.PublicKeyFromBytes(pubKey2.Key)
 	require.NoError(t, err)

@@ -15,7 +15,7 @@ require (
 	cosmossdk.io/x/feegrant v0.1.1
 	cosmossdk.io/x/tx v0.14.0
 	cosmossdk.io/x/upgrade v0.1.4
-	github.com/CosmWasm/wasmd v0.53.2
+	github.com/CosmWasm/wasmd v0.53.3
 	github.com/CosmWasm/wasmvm/v2 v2.1.5
 	github.com/cometbft/cometbft v0.38.17
 	github.com/cosmos/cosmos-db v1.1.1
@@ -47,7 +47,6 @@ require (
 	golang.org/x/sync v0.13.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20250324211829-b45e905df463
 	google.golang.org/grpc v1.72.0
-	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -94,7 +93,7 @@ require (
 	github.com/cometbft/cometbft-db v1.0.4 // indirect
 	github.com/cosmos/btcutil v1.0.5 // indirect
 	github.com/cosmos/gogogateway v1.2.0 // indirect
-	github.com/cosmos/iavl v1.2.2 // indirect
+	github.com/cosmos/iavl v1.2.4 // indirect
 	github.com/cosmos/ics23/go v0.11.0 // indirect
 	github.com/cosmos/ledger-cosmos-go v0.14.0 // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
@@ -222,6 +221,7 @@ require (
 	google.golang.org/api v0.221.0 // indirect
 	google.golang.org/genproto v0.0.0-20250212204824-5a70512c5d8b // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250422160041-2d3770c4ea7f // indirect
+	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 	nhooyr.io/websocket v1.8.17 // indirect
@@ -244,9 +244,9 @@ replace (
 )
 
 // feat/bls12 debug:
-
 // run: git clone -b feat/bls12 https://github.com/permissionlessweb/cosmos-sdk
-// replace github.com/cosmos/cosmos-sdk => ./cosmos-sdk
-replace github.com/cosmos/cosmos-sdk => github.com/permissionlessweb/cosmos-sdk v0.0.69
+replace github.com/cosmos/cosmos-sdk => github.com/permissionlessweb/cosmos-sdk v0.0.70
+
+// replace github.com/cosmos/cosmos-sdk => ../../COSMOS/mine
 
 exclude github.com/gogo/protobuf v1.3.3

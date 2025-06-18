@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/bitsongofficial/go-bitsong/crypto/bls"
+	"github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
 	btsgblst "github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
 	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
 	"github.com/bitsongofficial/go-bitsong/x/smart-account/authenticator"
@@ -44,27 +45,62 @@ func (s *Bls12381AuthenticatorTest) TearDownTest() {
 func (s *Bls12381AuthenticatorTest) TestBls12381() {
 	// Define test cases
 	type testCase struct {
-		name             string
-		includeTxExt     bool
-		includeAggPkSig  bool
-		expectInit       bool
-		expectSuccessful bool
-		expectConfirm    bool
-		numKeys          uint64
-		threshold        uint64
+		name                  string
+		includeTxExt          bool
+		includeAggPkSig       bool
+		expectSuccessfulAdded bool   // expect registering an auth to be valid
+		expectSuccessful      bool   // expect authentication to be valid
+		expectConfirm         bool   // expect confirm execution to be valid
+		numKeys               uint64 // # off agg keys in set
+		threshold             uint64 // signing threshold
+		signers               uint64 // # of keys to include in msg
 	}
 
 	testCases := []testCase{
 
 		{
-			name:             "with txExt, w/out agg",
-			numKeys:          1,
-			threshold:        1,
-			includeTxExt:     true,
-			includeAggPkSig:  true,
-			expectInit:       true,
-			expectSuccessful: true,
-			expectConfirm:    true,
+			name:                  "with txExt",
+			numKeys:               1,
+			threshold:             1,
+			signers:               1,
+			includeTxExt:          true,
+			includeAggPkSig:       true,
+			expectSuccessfulAdded: true,
+			expectSuccessful:      true,
+			expectConfirm:         true,
+		},
+		{
+			name:                  "without txExt",
+			numKeys:               1,
+			threshold:             1,
+			signers:               1,
+			includeTxExt:          false,
+			includeAggPkSig:       true,
+			expectSuccessfulAdded: true,
+			expectSuccessful:      false,
+			expectConfirm:         true,
+		},
+		{
+			name:                  "multiple keys, threshold met",
+			numKeys:               2,
+			threshold:             2,
+			signers:               2,
+			includeTxExt:          true,
+			includeAggPkSig:       true,
+			expectSuccessfulAdded: true,
+			expectSuccessful:      true,
+			expectConfirm:         true,
+		},
+		{
+			name:                  "multiple keys, threshold not met",
+			numKeys:               1,
+			threshold:             2,
+			signers:               1,
+			includeTxExt:          true,
+			includeAggPkSig:       true,
+			expectSuccessfulAdded: false,
+			expectSuccessful:      false,
+			expectConfirm:         true,
 		},
 	}
 
@@ -74,89 +110,90 @@ func (s *Bls12381AuthenticatorTest) TestBls12381() {
 
 			secretKeys, blsConfig, err := GenerateBLSPrivateKeysReturnBlsConfig(int(tc.numKeys), tc.threshold, 369)
 			s.Require().NoError(err)
+			fmt.Printf("len(secretKeys): %v\n", len(secretKeys))
 
 			txSender := s.TestPrivKeys[0].PubKey().Address()
 			// fmt.Printf("txSender: %v\n", txSender)
 			// fmt.Printf("secretKeys[0].PublicKey().Marshal(): %v\n", secretKeys[0].PublicKey().Marshal())
 			// fmt.Printf("len(secretKeys[0].PublicKey().Marshal()): %v\n", len(secretKeys[0].PublicKey().Marshal()))
-
 			initializedAuth, err := s.Bls12381Auth.Initialize([]byte{})
 			s.Require().NoError(err)
-			if !tc.expectInit {
-				s.Require().Error(err)
-			} else {
-				s.Require().NoError(err)
 
-				// Generate authentication request
-				ak := s.BitsongApp.AccountKeeper
+			s.Require().NoError(err)
 
-				// sample msg
-				msg := &bank.MsgSend{FromAddress: s.TestAccAddress[0].String(), ToAddress: "to", Amount: sdk.NewCoins(sdk.NewInt64Coin("foo", 1))}
+			// Generate authentication request
+			ak := s.BitsongApp.AccountKeeper
 
-				// digest msg into hash being signed
-				msgsToHash := []sdk.Msg{msg}
-				var anyMsgs []authenticator.LocalAny
-				for _, in := range msgsToHash {
-					anyMsg, _ := codectypes.NewAnyWithValue(in)
-					anyMsgs = append(anyMsgs, authenticator.LocalAny{
-						TypeURL: anyMsg.TypeUrl,
-						Value:   anyMsg.Value,
-					})
-				}
+			// sample msg
+			msg := &bank.MsgSend{FromAddress: s.TestAccAddress[0].String(), ToAddress: "to", Amount: sdk.NewCoins(sdk.NewInt64Coin("foo", 1))}
 
-				msgDigestHash := authenticator.Sha256Msgs(anyMsgs)
-				// fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
-
-				// Sign the message with the keys
-				agAuthData, err := SignMessageWithTestBls12Keys(s.EncodingConfig.TxConfig, msgDigestHash[:], secretKeys)
-				s.Require().NoError(err)
-
-				// omit inclusion
-				var smartAccAuth *types.AgAuthData
-				if tc.includeTxExt {
-					smartAccAuth = agAuthData
-				}
-				// // fmt.Printf("smartAccAuth: %v\n", smartAccAuth)
-				// //  todo: aggregate pubkey
-				// if tc.includeAggPkSig {}
-
-				// sample tx
-				tx, err := s.GenSimpleTxBls12381(msgsToHash, secretKeys, txSender)
-				s.Require().NoError(err)
-
-				// pass msgs based on test instance
-				request, err := authenticator.GenerateAuthenticationRequest(
-					s.Ctx, cdc, ak,
-					s.EncodingConfig.TxConfig.SignModeHandler(),
-					s.TestAccAddress[0], s.TestAccAddress[0],
-					nil, sdk.NewCoins(),
-					msg, tx,
-					0, false,
-					authenticator.SequenceMatch,
-					smartAccAuth,
-				)
-				s.Require().NoError(err)
-
-				// sign, err := request.SignatureData.Signers[0].Marshal()
-				// fmt.Printf("request.SignatureData: %v\n", sign)
-				request.AuthenticatorId = "1"
-
-				// fmt.Printf("request.Account.String(): %v\n", request.Account.String())
-				// fmt.Printf("len(request.Account): %v\n", len(request.Account))
-				// Attempt to authenticate using initialized authenticator
-				bzBlsConfig, err := blsConfig.Marshal()
-				s.Require().NoError(err)
-				// fmt.Printf("blsConfig: %v\n", blsConfig)
-				err = initializedAuth.OnAuthenticatorAdded(s.Ctx, request.Account, bzBlsConfig, request.AuthenticatorId)
-				s.Require().NoError(err)
-				err = initializedAuth.Authenticate(s.Ctx, request)
-				// fmt.Printf("err: %v\n", err)
-				s.Require().Equal(tc.expectSuccessful, err == nil)
-				err = initializedAuth.Track(s.Ctx, request)
-				s.Require().NoError(err)
-				err = initializedAuth.ConfirmExecution(s.Ctx, request)
-				s.Require().Equal(tc.expectConfirm, err == nil)
+			// digest msg into hash being signed
+			msgsToHash := []sdk.Msg{msg}
+			var anyMsgs []authenticator.LocalAny
+			for _, in := range msgsToHash {
+				anyMsg, _ := codectypes.NewAnyWithValue(in)
+				anyMsgs = append(anyMsgs, authenticator.LocalAny{
+					TypeURL: anyMsg.TypeUrl,
+					Value:   anyMsg.Value,
+				})
 			}
+
+			msgDigestHash := authenticator.Sha256Msgs(anyMsgs)
+			// fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
+			signerKeys := secretKeys
+			if tc.signers < uint64(len(secretKeys)) {
+				signerKeys = secretKeys[:tc.signers]
+			}
+			// Sign the message with the keys
+			agAuthData, err := SignMessageWithTestBls12Keys(s.EncodingConfig.TxConfig, msgDigestHash[:], signerKeys)
+
+			s.Require().NoError(err)
+
+			// omit inclusion
+			var smartAccAuth *types.AgAuthData
+			if tc.includeTxExt {
+				smartAccAuth = agAuthData
+			}
+			// // fmt.Printf("smartAccAuth: %v\n", smartAccAuth)
+			// //  todo: aggregate pubkey
+			// if tc.includeAggPkSig {}
+
+			// sample tx
+			tx, err := s.GenSimpleTxBls12381(msgsToHash, secretKeys, txSender)
+			s.Require().NoError(err)
+
+			// pass msgs based on test instance
+			request, err := authenticator.GenerateAuthenticationRequest(
+				s.Ctx, cdc, ak,
+				s.EncodingConfig.TxConfig.SignModeHandler(),
+				s.TestAccAddress[0], s.TestAccAddress[0],
+				nil, sdk.NewCoins(),
+				msg, tx,
+				0, false,
+				authenticator.SequenceMatch,
+				smartAccAuth,
+			)
+			s.Require().NoError(err)
+
+			// sign, err := request.SignatureData.Signers[0].Marshal()
+			// fmt.Printf("request.SignatureData: %v\n", sign)
+			request.AuthenticatorId = "1"
+
+			// fmt.Printf("request.Account.String(): %v\n", request.Account.String())
+			// fmt.Printf("len(request.Account): %v\n", len(request.Account))
+			// Attempt to authenticate using initialized authenticator
+			bzBlsConfig, err := blsConfig.Marshal()
+			s.Require().NoError(err)
+			// fmt.Printf("blsConfig: %v\n", blsConfig)
+			err = initializedAuth.OnAuthenticatorAdded(s.Ctx, request.Account, bzBlsConfig, request.AuthenticatorId)
+			s.Require().Equal(tc.expectSuccessfulAdded, err == nil)
+			err = initializedAuth.Authenticate(s.Ctx, request)
+			fmt.Printf("err: %v\n", err)
+			s.Require().Equal(tc.expectSuccessful, err == nil)
+			err = initializedAuth.Track(s.Ctx, request)
+			s.Require().NoError(err)
+			err = initializedAuth.ConfirmExecution(s.Ctx, request)
+			s.Require().Equal(tc.expectConfirm, err == nil)
 		})
 	}
 }
@@ -174,9 +211,12 @@ func GenerateBLSPrivateKeysReturnBlsConfig(n int, threshold uint64, seed int64) 
 	pubkeys := make([][]byte, n)
 
 	for i := 0; i < n; i++ {
+		key, err := blst.RandKey()
+		if err != nil {
+			return nil, types.BlsConfig{}, fmt.Errorf("RandKey() returned an error: %v", err)
+		}
 		// Convert to BLS secret key
-		privKeyBytes := []byte{0x25, 0x29, 0x5f, 0x0d, 0x1d, 0x59, 0x2a, 0x90, 0xb3, 0x33, 0xe2, 0x6e, 0x85, 0x14, 0x97, 0x08, 0x20, 0x8e, 0x9f, 0x8e, 0x8b, 0xc1, 0x8f, 0x6c, 0x77, 0xbd, 0x62, 0xf8, 0xad, 0x7a, 0x68, 0x66}
-		secretKey, err := bls.SecretKeyFromBytes(privKeyBytes)
+		secretKey, err := bls.SecretKeyFromBytes(key.Marshal())
 		if err != nil {
 			return nil, types.BlsConfig{}, fmt.Errorf("failed to create secret key %d: %v", i, err)
 		}
@@ -234,7 +274,7 @@ func SignMessageWithTestBls12Keys(gen client.TxConfig, msgHash []byte, secretKey
 	}
 
 	// Marshal the signatures array into bytes
-	// fmt.Printf("sigs: %v\n", sigs)
+	fmt.Printf("sigs: %v\n", sigs)
 	signBz, err := authenticator.MarshalSignatureJSON(sigs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal signatures: %w", err)

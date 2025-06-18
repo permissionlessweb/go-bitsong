@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
@@ -91,4 +92,27 @@ func TestZeroKey(t *testing.T) {
 	_, err := rand.Read(zKey[:])
 	require.NoError(t, err)
 	require.Equal(t, false, blst.IsZero(zKey[:]))
+}
+
+func TestRandKeyUniqueness(t *testing.T) {
+	numKeys := 10
+	keys := make([]common.SecretKey, numKeys)
+
+	for i := 0; i < numKeys; i++ {
+		key, err := blst.RandKey()
+		if err != nil {
+			t.Errorf("RandKey() returned an error: %v", err)
+		}
+		keys[i] = key
+		fmt.Printf("key.Marshal(): %v\n", key.Marshal())
+	}
+
+	// Compare each key with every other key
+	for i := 0; i < numKeys; i++ {
+		for j := i + 1; j < numKeys; j++ {
+			if bytes.Equal(keys[i].Marshal(), keys[j].Marshal()) {
+				t.Errorf("RandKey() generated duplicate keys at indices %d and %d", i, j)
+			}
+		}
+	}
 }

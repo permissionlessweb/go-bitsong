@@ -91,23 +91,22 @@ func GetSignerAndSignatures(cdc codec.Codec, tx sdk.Tx, aggSig *sat.AgAuthData) 
 		// static accAddress for account keys that registered agg authenticator.
 		signers = append(signers, sdk.AccAddress(signerBytes[0]))
 
-		for _, singed := range aggregatedAuthData {
+		for _, signer := range aggregatedAuthData {
 			// fmt.Printf("singed.PubKey.Bytes(): %v\n", singed.PubKey.Bytes())
 			// fmt.Printf("len(singed.PubKey.Bytes()): %v\n", len(singed.PubKey.Bytes()))
 			// fmt.Printf("len(singed.PubKey.Address().Bytes()): %v\n", len(singed.PubKey.Address().Bytes()))
 			// fmt.Printf("singed.PubKey.Address(): %v\n", singed.PubKey.Address())
-			fmt.Println(singed.PubKey.Address().Marshal())
+			fmt.Println(signer.PubKey.Address().Marshal())
 			// add signer
-			signers = append(signers, sdk.AccAddress(singed.PubKey.Bytes()))
+			signers = append(signers, sdk.AccAddress(signer.PubKey.Bytes()))
 
 			// add signatures
 			signatures = append(signatures, signing.SignatureV2{
-				PubKey:   singed.PubKey,
-				Data:     singed.Data,
-				Sequence: singed.Sequence,
+				PubKey:   signer.PubKey,
+				Data:     signer.Data,
+				Sequence: signer.Sequence,
 			})
 		}
-		// we expect one signature to have been validated already
 		return signers, signatures, nil
 	}
 

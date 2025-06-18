@@ -5,7 +5,6 @@ import (
 
 	errorsmod "cosmossdk.io/errors"
 	storetypes "cosmossdk.io/store/types"
-	"github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
 	btsgblst "github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
 	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
 	"github.com/bitsongofficial/go-bitsong/x/smart-account/types"
@@ -68,23 +67,18 @@ func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) err
 
 	// Aggregate public keys
 	var g1 [][]byte
+	// first sig details is ALWAYS aggregated key, so we skip
 	for i, signer := range req.SignatureData.Signers[1:] {
-		// first sig details is ALWAYS aggregated key, so we skip
-		// fmt.Printf("len(sigs): %v\n", len(signer))
 		validPoint := checkPubkeyExistence(&blsConfig, signer)
 		if !validPoint {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "aggregate key is not valid point %d: %v", i, err)
 		}
-		if err != nil {
-			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "failed to deserialize public key at index %d: %v", i, err)
-		}
-		pks, _ := blst.PublicKeyFromBytes(signer)
-
-		good, err := btsgblst.VerifySignature(req.SignatureData.Signatures[i], msgDigestHash, pks)
+		// pk, _ := blst.PublicKeyFromBytes(signer)
+		// good, err := btsgblst.VerifySignature(req.SignatureData.Signatures[i+1], msgDigestHash, pk)
 		// fmt.Printf("good: %v\n", good)
-		if err != nil || !good {
-			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "AHHHHHHHH: %v", err)
-		}
+		// if err != nil || !good {
+		// 	return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "AHHHHHHHH: %v", err)
+		// }
 		// Aggregate public keys (add them in G1)
 		g1 = append(g1, signer)
 	}
