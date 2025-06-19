@@ -264,7 +264,7 @@ func SignMessageWithTestBls12Keys(gen client.TxConfig, msgHash []byte, secretKey
 		sigV2 := signing.SignatureV2{
 			PubKey: pubkey,
 			Data: &signing.SingleSignatureData{
-				SignMode:  0,
+				SignMode:  signing.SignMode_SIGN_MODE_DIRECT,
 				Signature: sig.Marshal(),
 			},
 			Sequence: 0,

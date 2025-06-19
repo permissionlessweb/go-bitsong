@@ -43,18 +43,22 @@ To use aggregated authentication, data must be set in the `ag_auth` object. This
 The `SignatureV2` and `SingleSignatureData` structures are used to represent signature data. 
 ```go go/types/signature.go
 type SignatureV2 struct {
-	// ... existing code ...
+	// PubKey is the public key to use for verifying the signature
+	PubKey cryptotypes.PubKey
 
 	// Data is the actual data of the signature which includes SignMode's and
 	// the actual signature from the pubkey. 
 	Data SingleSignatureData
 
-	// ... existing code ...
+	// Sequence is the sequence of this account. Only populated in
+	// SIGN_MODE_DIRECT.
+	Sequence uint64
 }
 
 // SingleSignatureData represents the signature and SignMode of a single (non-multisig) signer
 type SingleSignatureData struct {
-	// ... existing code ...
+	// SignMode represents the SignMode of the signature. use SIGN_MODE_DIRECT
+	SignMode SignMode
 
 	// Signature is the raw signature.
 	Signature []byte
@@ -71,6 +75,8 @@ signBz, err := authenticator.MarshalSignatureJSON(sigs)
 // when writing custom aggregate authenticators
 aggAuthData, err := UnmarshalSignatureJSON(cdc, aggSig.GetData())
 ```
+#### Defining `AuthInfo`
+A single signature object set in `AuthInfo.SignerInfos`, which is to be the single aggregated signature and pubkey. 
 
 ### Examples 
 #### Rust

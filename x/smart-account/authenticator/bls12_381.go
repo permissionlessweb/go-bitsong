@@ -51,8 +51,7 @@ func (bls Bls12381) Authenticate(ctx sdk.Context, req AuthenticationRequest) err
 	// ensure threshold is met & keys provided are expected for this authenticator
 	var blsConfig types.BlsConfig
 	store := ctx.KVStore(bls.storeKey)
-	key := types.KeyAccountBlsKeySet(req.Account, req.AuthenticatorId)
-	found, err := types.Get(store, key, &blsConfig)
+	found, err := types.Get(store, types.KeyAccountBlsKeySet(req.Account, req.AuthenticatorId), &blsConfig)
 	if err != nil || !found {
 		return errorsmod.Wrap(err, "failed to get authenticator")
 	}

@@ -540,7 +540,6 @@ func MakeTxBuilderBls381(
 		sig := p.Sign(msgDigestHash[:])
 		cosmosSigs[i].Data.(*signing.SingleSignatureData).Signature = sig.Marshal()
 		sigsInside = append(sigsInside, sig)
-
 	}
 
 	authExtSignature, err := gen.MarshalSignatureJSON(cosmosSigs)

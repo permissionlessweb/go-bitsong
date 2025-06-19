@@ -82,7 +82,6 @@ func GetSignerAndSignatures(cdc codec.Codec, tx sdk.Tx, aggSig *sat.AgAuthData) 
 		return nil, nil, err
 	}
 
-	// If using aggregated keys, we set the first signer as
 	if aggSig != nil {
 		aggregatedAuthData, err := UnmarshalSignatureJSON(cdc, aggSig.GetData())
 		if err != nil {
@@ -96,7 +95,7 @@ func GetSignerAndSignatures(cdc codec.Codec, tx sdk.Tx, aggSig *sat.AgAuthData) 
 			// fmt.Printf("len(singed.PubKey.Bytes()): %v\n", len(singed.PubKey.Bytes()))
 			// fmt.Printf("len(singed.PubKey.Address().Bytes()): %v\n", len(singed.PubKey.Address().Bytes()))
 			// fmt.Printf("singed.PubKey.Address(): %v\n", singed.PubKey.Address())
-			fmt.Println(signer.PubKey.Address().Marshal())
+			// fmt.Println(signer.PubKey.Address().Marshal())
 			// add signer
 			signers = append(signers, sdk.AccAddress(signer.PubKey.Bytes()))
 
