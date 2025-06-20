@@ -2,7 +2,6 @@ use crate::types::Signature;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{entry_point, Binary, DepsMut, Env, Response, StdError, StdResult};
 use cw_storage_plus::Item;
-use osmosis_authenticators as oa;
 use sylvia::types::{InstantiateCtx, QueryCtx};
 use sylvia::{contract, entry_points};
 
@@ -35,13 +34,13 @@ impl CosignerAuthenticator {
     fn sudo_authenticate(
         &self,
         deps: DepsMut,
-        auth_request: oa::AuthenticationRequest,
+        auth_request: btsg_auth::AuthenticationRequest,
     ) -> Result<Response, StdError> {
         deps.api.debug(&format!("auth_request {:?}", auth_request));
         let sigs: Vec<Signature> = cosmwasm_std::from_json(&auth_request.signature)?;
 
         if sigs.len() != self.pubkeys.load(deps.storage)?.len() {
-            return Ok(Response::new().set_data(oa::AuthenticationResult::NotAuthenticated {}));
+            return Ok(Response::new().set_data(btsg_auth::AuthenticationResult::NotAuthenticated {}));
         }
 
         let mut pubkeys = self.pubkeys.load(deps.storage)?;
@@ -49,7 +48,7 @@ impl CosignerAuthenticator {
 
         // The message hash is what gets signed
         for (i, pubkey) in pubkeys.iter().enumerate() {
-            let hash = oa::sha256(&concat(
+            let hash = btsg_auth::sha256(&concat(
                 &auth_request.sign_mode_tx_data.sign_mode_direct,
                 &sigs[i].salt,
             ));
@@ -63,11 +62,11 @@ impl CosignerAuthenticator {
                 })?;
 
             if !valid {
-                return Ok(Response::new().set_data(oa::AuthenticationResult::NotAuthenticated {}));
+                return Ok(Response::new().set_data(btsg_auth::AuthenticationResult::NotAuthenticated {}));
             }
         }
 
-        Ok(Response::new().set_data(oa::AuthenticationResult::Authenticated {}))
+        Ok(Response::new().set_data(btsg_auth::AuthenticationResult::Authenticated {}))
     }
 }
 
@@ -79,7 +78,7 @@ fn concat(a: &Binary, b: &Binary) -> Binary {
 
 #[cw_serde]
 pub enum SudoMsg {
-    Authenticate(oa::AuthenticationRequest),
+    Authenticate(btsg_auth::AuthenticationRequest),
 }
 
 #[entry_point]

@@ -1,19 +1,25 @@
 package authenticator
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 
-	txsigning "cosmossdk.io/x/tx/signing"
-
-	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
-
-	"github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/codec"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/cosmos/cosmos-sdk/crypto/keys/bls12381"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
+
+	sat "github.com/bitsongofficial/go-bitsong/x/smart-account/types"
+
+	txsigning "cosmossdk.io/x/tx/signing"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
+	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
 	errorsmod "cosmossdk.io/errors"
-	"github.com/cosmos/cosmos-sdk/codec"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
@@ -56,7 +62,7 @@ type ExplicitTxData struct {
 // A signer can only have one signature, so if it appears in multiple messages, the signatures must be
 // the same, and it will only be returned once by this function. This is to mimic the way the classic
 // sdk authentication works, and we will probably want to change this in the future
-func GetSignerAndSignatures(tx sdk.Tx) (signers []sdk.AccAddress, signatures []signing.SignatureV2, err error) {
+func GetSignerAndSignatures(cdc codec.Codec, tx sdk.Tx, aggSig *sat.AgAuthData) (signers []sdk.AccAddress, signatures []signing.SignatureV2, err error) {
 	// Attempt to cast the provided transaction to an authsigning.Tx.
 	sigTx, ok := tx.(authsigning.Tx)
 	if !ok {
@@ -76,10 +82,36 @@ func GetSignerAndSignatures(tx sdk.Tx) (signers []sdk.AccAddress, signatures []s
 		return nil, nil, err
 	}
 
+	if aggSig != nil {
+		aggregatedAuthData, err := UnmarshalSignatureJSON(cdc, aggSig.GetData())
+		if err != nil {
+			return nil, nil, err
+		}
+		// static accAddress for account keys that registered agg authenticator.
+		signers = append(signers, sdk.AccAddress(signerBytes[0]))
+
+		for _, signer := range aggregatedAuthData {
+			// fmt.Printf("singed.PubKey.Bytes(): %v\n", singed.PubKey.Bytes())
+			// fmt.Printf("len(singed.PubKey.Bytes()): %v\n", len(singed.PubKey.Bytes()))
+			// fmt.Printf("len(singed.PubKey.Address().Bytes()): %v\n", len(singed.PubKey.Address().Bytes()))
+			// fmt.Printf("singed.PubKey.Address(): %v\n", singed.PubKey.Address())
+			// fmt.Println(signer.PubKey.Address().Marshal())
+			// add signer
+			signers = append(signers, sdk.AccAddress(signer.PubKey.Bytes()))
+
+			// add signatures
+			signatures = append(signatures, signing.SignatureV2{
+				PubKey:   signer.PubKey,
+				Data:     signer.Data,
+				Sequence: signer.Sequence,
+			})
+		}
+		return signers, signatures, nil
+	}
+
 	for _, signer := range signerBytes {
 		signers = append(signers, sdk.AccAddress(signer))
 	}
-
 	// check that signer length and signature length are the same
 	if len(signatures) != len(signers) {
 		return nil, nil,
@@ -127,7 +159,7 @@ func extractExplicitTxData(tx sdk.Tx, signerData authsigning.SignerData) (Explic
 	txMsgs := tx.GetMsgs()
 	msgs := make([]LocalAny, len(txMsgs))
 	for i, txMsg := range txMsgs {
-		encodedMsg, err := types.NewAnyWithValue(txMsg)
+		encodedMsg, err := codectypes.NewAnyWithValue(txMsg)
 		if err != nil {
 			return ExplicitTxData{}, errorsmod.Wrap(err, "failed to encode msg")
 		}
@@ -153,14 +185,14 @@ func extractExplicitTxData(tx sdk.Tx, signerData authsigning.SignerData) (Explic
 // corresponding signer, which involves iterating over the signatures. To avoid iterating over the signatures twice,
 // we do replay protection here instead of in a separate replay protection function.
 //
-// Only SingleSignatureData is supported. Multisigs can be implemented by using partitioned compound authenticators
-func extractSignatures(txSigners []sdk.AccAddress, txSignatures []signing.SignatureV2, txData ExplicitTxData, account sdk.AccAddress, replayProtection ReplayProtection) (signatures [][]byte, msgSignature []byte, err error) {
+// If this tx is making use of Aggregated Signatures,we optionally expect a single aggregated pk & sig, or else we return nothing.
+func extractSignatures(cdc codec.Codec, txSigners []sdk.AccAddress, txSignatures []signing.SignatureV2, txData ExplicitTxData, account sdk.AccAddress, replayProtection ReplayProtection) (signatures [][]byte, msgSignature []byte, err error) {
+
 	for i, signature := range txSignatures {
 		single, ok := signature.Data.(*signing.SingleSignatureData)
 		if !ok {
 			return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidType, "failed to cast signature to SingleSignatureData")
 		}
-
 		signatures = append(signatures, single.Signature)
 
 		if txSigners[i].Equals(account) {
@@ -168,7 +200,10 @@ func extractSignatures(txSigners []sdk.AccAddress, txSignatures []signing.Signat
 			if err != nil {
 				return nil, nil, err
 			}
-			msgSignature = single.Signature
+			// set aggregate signature as single signature
+			if i == 0 {
+				msgSignature = single.Signature
+			}
 		}
 	}
 	return signatures, msgSignature, nil
@@ -189,28 +224,38 @@ func GenerateAuthenticationRequest(
 	msgIndex int,
 	simulate bool,
 	replayProtection ReplayProtection,
+	agAuthData *sat.AgAuthData,
 ) (AuthenticationRequest, error) {
-	// Only supporting one signer per message. This will be enforced in sdk v0.50
+	var simpleSignatureData = SimplifiedSignatureData{
+		Signers:    make([]sdk.AccAddress, 0),
+		Signatures: make([][]byte, 0),
+	}
+	// Only supporting one signer per message in default signer data
 	signers, _, err := cdc.GetMsgV1Signers(msg)
 	if err != nil {
 		return AuthenticationRequest{}, err
 	}
+	// fmt.Printf("signers: %v\n", signers)
+
+	// either actual signer, or aggregated pubkey & address of account agg pubkeys control.
 	signer := sdk.AccAddress(signers[0])
 	if !signer.Equals(account) {
 		return AuthenticationRequest{}, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "invalid signer")
 	}
 
-	// Get the signers and signatures from the transaction. A signer can only have one signature, so if it
-	// appears in multiple messages, the signatures must be the same, and it will only be returned once by
-	// this function. This is to mimic the way the classic sdk authentication works, and we will probably want
-	// to change this in the future
-	txSigners, txSignatures, err := GetSignerAndSignatures(tx)
+	// Get the signers and signatures from the transaction.
+	txSigners, txSignatures, err := GetSignerAndSignatures(cdc, tx, agAuthData)
 	if err != nil {
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get signers and signatures")
 	}
+	// fmt.Printf("txSigners: %v\n", txSigners)
+	// fmt.Printf("len(txSigners): %v\n", len(txSigners))
+	// fmt.Printf("txSignatures: %v\n", txSignatures)
+	// fmt.Printf("len(txSignatures): %v\n", len(txSignatures))
 
 	// Get the signer data for the account. This is needed in the SignDoc
 	signerData := getSignerData(ctx, ak, account)
+	// fmt.Printf("signerData: %v\n", signerData)
 
 	// Get the concrete transaction data to be passed to the authenticators
 	txData, err := extractExplicitTxData(tx, signerData)
@@ -218,11 +263,18 @@ func GenerateAuthenticationRequest(
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get explicit tx data")
 	}
 
-	// Get the signatures for the transaction and execute replay protection
-	signatures, msgSignature, err := extractSignatures(txSigners, txSignatures, txData, account, replayProtection)
+	// Get the signatures for the transaction and execute replay protection.
+	// If aggregate keys are in use, set agg key & sig as first value, followed by all key/sig pairs in extension
+	signatures, msgSignature, err := extractSignatures(cdc, txSigners, txSignatures, txData, account, replayProtection)
 	if err != nil {
 		return AuthenticationRequest{}, errorsmod.Wrap(err, "failed to get signatures")
 	}
+
+	simpleSignatureData.Signatures = append(simpleSignatureData.Signatures, signatures...)
+	simpleSignatureData.Signers = append(simpleSignatureData.Signers, txSigners...)
+
+	// fmt.Printf("len(simpleSignatureData.Signatures): %v\n", len(simpleSignatureData.Signatures))
+	// fmt.Printf("len(simpleSignatureData.Signers): %v\n", len(simpleSignatureData.Signers))
 
 	// Build the authentication request
 	authRequest := AuthenticationRequest{
@@ -237,10 +289,7 @@ func GenerateAuthenticationRequest(
 		SignModeTxData: SignModeData{
 			Direct: []byte("signBytes"),
 		},
-		SignatureData: SimplifiedSignatureData{
-			Signers:    txSigners,
-			Signatures: signatures,
-		},
+		SignatureData:       simpleSignatureData,
 		Simulate:            simulate,
 		AuthenticatorParams: nil,
 	}
@@ -260,6 +309,61 @@ func GenerateAuthenticationRequest(
 	authRequest.SignModeTxData = SignModeData{
 		Direct: signBytes,
 	}
-
 	return authRequest, nil
+}
+
+// Generates the SHA256SUM for an array of cosmos-sdk messages
+func Sha256Msgs(msgs []LocalAny) [32]byte {
+	jsonBytes, _ := json.Marshal(msgs)
+	return sha256.Sum256(jsonBytes)
+}
+
+func MarshalSignatureJSON(sigs []signing.SignatureV2) ([]byte, error) {
+	descs := make([]*signing.SignatureDescriptor, len(sigs))
+
+	for i, sig := range sigs {
+		descData := signing.SignatureDataToProto(sig.Data)
+		// assert public key interface works
+		pubKey, ok := sig.PubKey.(*bls12381.PubKey)
+		if !ok {
+			return nil, fmt.Errorf("failed to get bls12381.PubKey")
+		}
+		any, err := codectypes.NewAnyWithValue(pubKey)
+		if err != nil {
+			return nil, err
+		}
+		// fmt.Printf("any: %v\n", any)
+		descs[i] = &signing.SignatureDescriptor{
+			PublicKey: any,
+			Data:      descData,
+			Sequence:  sig.Sequence,
+		}
+	}
+
+	toJSON := &signing.SignatureDescriptors{Signatures: descs}
+
+	return codec.ProtoMarshalJSON(toJSON, nil)
+}
+
+func UnmarshalSignatureJSON(cdc codec.Codec, bz []byte) ([]signing.SignatureV2, error) {
+	var sigDescs signing.SignatureDescriptors
+	err := cdc.UnmarshalJSON(bz, &sigDescs)
+	if err != nil {
+		return nil, err
+	}
+
+	sigs := make([]signing.SignatureV2, len(sigDescs.Signatures))
+	for i, desc := range sigDescs.Signatures {
+		pubKey, _ := desc.PublicKey.GetCachedValue().(cryptotypes.PubKey)
+
+		data := signing.SignatureDataFromProto(desc.Data)
+
+		sigs[i] = signing.SignatureV2{
+			PubKey:   pubKey,
+			Data:     data,
+			Sequence: desc.Sequence,
+		}
+	}
+
+	return sigs, nil
 }

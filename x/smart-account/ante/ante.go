@@ -65,7 +65,6 @@ func (ad AuthenticatorDecorator) AnteHandle(
 	if err != nil {
 		return sdk.Context{}, err
 	}
-
 	// Performing fee payer authentication with minimal gas allocation
 	// serves as a spam-prevention strategy to prevent users from adding multiple
 	// authenticators that may excessively consume computational resources.
@@ -117,7 +116,7 @@ func (ad AuthenticatorDecorator) AnteHandle(
 	feeGranter := feeTx.FeeGranter()
 	fee := feeTx.GetFee()
 
-	selectedAuthenticators, err := ad.GetSelectedAuthenticators(tx, len(msgs))
+	selectedAuthenticators, keysToAggregate, err := ad.GetSelectedAuthenticatorsAndAggSignData(tx, len(msgs))
 	if err != nil {
 		return ctx, err
 	}
@@ -169,6 +168,7 @@ func (ad AuthenticatorDecorator) AnteHandle(
 			msgIndex,
 			simulate,
 			authenticator.SequenceMatch,
+			keysToAggregate,
 		)
 		if err != nil {
 			return sdk.Context{},
@@ -300,29 +300,35 @@ func (ad AuthenticatorDecorator) ValidateAuthenticatorFeePayer(ctx sdk.Context, 
 // If no selected authenticators are found in the extension, the function initializes the list with -1 values.
 // It returns an array of selected authenticators or an error if the number of selected authenticators does not match
 // the number of messages in the transaction.
-func (ad AuthenticatorDecorator) GetSelectedAuthenticators(
+
+//	Returns the aggregated keys & signatures for the provided
+//
+// if no selected authenticators are found in the extension, the function returns an empty array for both, as a defaultsecp256k1 supported signkey.
+// This will depreceate with support from native cosmos-sdk of programmable account auth primitives (currenntly bech32, could hash G1 pubkey to derive 32 byte value, but still would need to access pubkey (assigned light client?))
+func (ad AuthenticatorDecorator) GetSelectedAuthenticatorsAndAggSignData(
 	tx sdk.Tx,
 	msgCount int,
-) ([]uint64, error) {
+) ([]uint64, *types.AgAuthData, error) {
 	extTx, ok := tx.(authante.HasExtensionOptionsTx)
 	if !ok {
-		return nil, errorsmod.Wrap(sdkerrors.ErrTxDecode, "Tx must be a HasExtensionOptionsTx to use Authenticators")
+		return nil, nil, errorsmod.Wrap(sdkerrors.ErrTxDecode, "Tx must be a HasExtensionOptionsTx to use Authenticators")
 	}
 
 	// Get the selected authenticator options from the transaction.
 	txOptions := ad.smartAccountKeeper.GetAuthenticatorExtension(extTx.GetNonCriticalExtensionOptions())
 	if txOptions == nil {
-		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest,
+		return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest,
 			"Cannot get AuthenticatorTxOptions from tx")
 	}
 	// Retrieve the selected authenticators from the extension.
 	selectedAuthenticators := txOptions.GetSelectedAuthenticators()
+	keysToAggregate := txOptions.GetAggAuth()
 
 	if len(selectedAuthenticators) != msgCount {
 		// Return an error if the number of selected authenticators does not match the number of messages.
-		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest,
+		return nil, nil, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest,
 			"Mismatch between the number of selected authenticators and messages, msg count %d, got %d selected authenticators", msgCount, len(selectedAuthenticators))
 	}
 
-	return selectedAuthenticators, nil
+	return selectedAuthenticators, keysToAggregate, nil
 }

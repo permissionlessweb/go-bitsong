@@ -1,5 +1,8 @@
 # x/smart-account Module
 
+## TODO:
+- fix pubkey byte length (48)
+
 ## General Explanation
 
 The `x/smart-account` module provides a robust and extensible framework for authenticating transactions.
@@ -68,6 +71,14 @@ calling cosmwasm contracts to authenticate the messages.
 
 ### Authenticator configuration for accounts
 
+| Authenticators implementations | Description | Custom Types Needed |
+| --- | --- | --- |
+| [`AllOf`](./authenticator/all_of.go#L17) |   | 
+| [`AnyOf`](./authenticator/any_of.go#L17) |  | 
+| [`CosmwasmAuthenticatorV1`](./authenticator/cosmwasm.go#L17) |  | 
+| [`MessageFilter`](./authenticator/message_filter.go#L17) |   | 
+| [`SignatureVerification`](./authenticator/signature_authenticator.go#L17) | | 
+
 Accounts have the flexibility to be linked with multiple authenticators, a setup maintained in the system's storage 
 and managed by the module's Keeper. The keeper is responsible for adding and removing 
 authenticators, as well as storing any user data that the authenticators may need. 
@@ -81,7 +92,6 @@ account. For example, a `SignatureVerification` contains the code necessary to v
 it needs to know which public key to use when verifying it. An account can configure the 
 `SignatureVerification` to be one of their authenticators and would need to provide the public key it wants 
 to use for verification in the configuration data.
-
 
 To make an authenticator work for a specific account, you just need to feed it the right information. For example, 
 the `SignatureVerification` needs to know which public key to check when verifying a signature. 
@@ -214,7 +224,6 @@ RemoveAuthenticator(account, authenticatorGlobalId)
 2. **Identify Fee Payer**: The first signer of the transaction is considered the fee payer.
 
 3. **Authenticate Each Message**:
-
    - The associated account for every message is identified.
    - The system fetches the appropriate authenticators for that account.
    - The selected authenticator is retrieved from the transaction and used to determine which aithenticator to execute
@@ -318,7 +327,7 @@ pub enum AuthenticatorSudoMsg {
 The last three messages corresponds to steps 3, 5 and 7 of the [transaction authentication process](#transaction-authentication-overview) and the first
 two messages are used to handle the addition and removal of the authenticator.
 
-Request types are defined [here](https://docs.rs/osmosis-authenticators/latest/osmosis_authenticators).
+Request types are defined [here](https://docs.rs/btsg-auth/latest/btsg_auth).
 
 ## Queries
 
@@ -359,6 +368,8 @@ message TxExtension {
   // selected_authenticators holds the authenticator_id for the chosen
   // authenticator per message.
   repeated uint64 selected_authenticators = 1;
+  // Aggregated auth data if in use of aggregated keys authenticator
+  SmartAccountAuthData smart_account = 2;
 }
 ```
 
@@ -374,11 +385,8 @@ applications don't need to be aware of authenticators to get their txs processed
 To simplify the design of the authenticator module, a few restrictions have been set on the type of transactions
 that are accepted.
 
-### Messages can only have one signer
-
-On cosmos SDK versions before 0.50 it was possible to have multiple signers for a message. This will no longer be
-the case after v0.50, and we have introduced this restriction here as it makes it more clear which account a message
-is associated with.
+### Message Signing
+Messages by default expect to have a single pubkey & signature provided in the array of 
 
 ### The fee payer must be the first signer of the first message (or, feegrant exist for first sender)
 

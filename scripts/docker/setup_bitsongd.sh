@@ -19,7 +19,7 @@ if [ -f "$GENESIS_FILE" ]; then
 else
   echo "$GENESIS_FILE does not exist. Generating..."
 
-  bitsongdd init --chain-id "$CHAIN_ID" "$MONIKER"
+  bitsongd init --chain-id "$CHAIN_ID" "$MONIKER"
   bitsongd add-ica-config
   # staking/governance token is hardcoded in config, change this
   sed -i "s/\"stake\"/\"$STAKE\"/" "$GENESIS_FILE"
@@ -31,6 +31,7 @@ else
   sed -i 's/keyring-backend = "os"/keyring-backend = "test"/' "$HOME"/.bitsongd/config/client.toml
 fi
 
+## todo: configure toml & config 
 APP_TOML_CONFIG="$HOME"/.bitsongd/config/app.toml
 APP_TOML_CONFIG_NEW="$HOME"/.bitsongd/config/app_new.toml
 CONFIG_TOML_CONFIG="$HOME"/.bitsongd/config/config.toml

@@ -1,23 +1,30 @@
 package authenticator_test
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/cosmos/cosmos-sdk/client"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/simulation"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
+	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-
 	"github.com/stretchr/testify/suite"
 
 	"github.com/bitsongofficial/go-bitsong/app"
+	"github.com/bitsongofficial/go-bitsong/crypto/bls/blst"
+	"github.com/bitsongofficial/go-bitsong/crypto/bls/common"
+
 	"github.com/bitsongofficial/go-bitsong/x/smart-account/authenticator"
+	"github.com/bitsongofficial/go-bitsong/x/smart-account/types"
+	smartaccounttypes "github.com/bitsongofficial/go-bitsong/x/smart-account/types"
 )
 
 type SigVerifyAuthenticationSuite struct {
@@ -269,7 +276,7 @@ func (s *SigVerifyAuthenticationSuite) TestSignatureAuthenticator() {
 
 			if tc.TestData.ShouldSucceedGettingData {
 				// request for the first message
-				request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, addr, addr, nil, sdk.NewCoins(), tc.TestData.Msgs[0], tx, 0, false, authenticator.SequenceMatch)
+				request, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, addr, addr, nil, sdk.NewCoins(), tc.TestData.Msgs[0], tx, 0, false, authenticator.SequenceMatch, &types.AgAuthData{})
 				s.Require().NoError(err)
 
 				// Test Authenticate method
@@ -283,7 +290,7 @@ func (s *SigVerifyAuthenticationSuite) TestSignatureAuthenticator() {
 					s.Require().Error(err)
 				}
 			} else {
-				_, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, addr, addr, nil, sdk.NewCoins(), tc.TestData.Msgs[0], tx, 0, false, authenticator.SequenceMatch)
+				_, err := authenticator.GenerateAuthenticationRequest(s.Ctx, s.BitsongApp.AppCodec(), ak, sigModeHandler, addr, addr, nil, sdk.NewCoins(), tc.TestData.Msgs[0], tx, 0, false, authenticator.SequenceMatch, &types.AgAuthData{})
 				s.Require().Error(err)
 			}
 		})
@@ -384,6 +391,206 @@ func (s *SigVerifyAuthenticationSuite) TestSignatureAuthenticator() {
 //	s.Require().True(authentication.IsAuthenticated())
 //}
 
+func MakeTxBuilderBls381(
+	ctx sdk.Context,
+	gen client.TxConfig,
+	msgs []sdk.Msg,
+	feeAmt sdk.Coins,
+	gas uint64,
+	chainID string,
+	accNums, accSeqs []uint64,
+	signers, signatures []common.SecretKey,
+) (client.TxBuilder, error) {
+	// Validate inputs
+	if len(msgs) == 0 {
+		return nil, fmt.Errorf("no messages provided")
+	}
+	if len(signers) == 0 || len(signatures) == 0 {
+		return nil, fmt.Errorf("no signers or signatures provided")
+	}
+	if len(signers) != len(signatures) {
+		return nil, fmt.Errorf("mismatched lengths: signatures=%d, signers=%d", len(signatures), len(signers))
+	}
+	if len(accNums) != len(signers) || len(accSeqs) != len(signers) {
+		return nil, fmt.Errorf("mismatched lengths: accNums=%d, accSeqs=%d, signers=%d", len(accNums), len(accSeqs), len(signers))
+	}
+	if feeAmt.IsZero() || !feeAmt.IsValid() {
+		return nil, fmt.Errorf("invalid fee amount: %v", feeAmt)
+	}
+	if gas == 0 {
+		return nil, fmt.Errorf("gas limit cannot be zero")
+	}
+
+	cosmosSigs := make([]signing.SignatureV2, len(signatures))
+	pks := make([]common.PublicKey, 0)
+	sigsInside := make([]common.Signature, 0)
+
+	// Create a random length memo
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	memo := simulation.RandStringOfLength(r, simulation.RandIntBetween(r, 0, 100))
+	signMode, err := authsigning.APISignModeToInternal(gen.SignModeHandler().DefaultMode())
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert sign mode: %v", err)
+	}
+
+	// 1st round: set SignatureV2 with derived public keys and empty signatures
+	for i, privKey := range signers {
+		pubKey, err := blst.GetCosmosBlsPubkey(privKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to derive BLS public key for signer %d: %v", i, err)
+		}
+		if pubKey == nil {
+			return nil, fmt.Errorf("derived BLS public key is nil for signer %d", i)
+		}
+
+		cosmosSigs[i] = signing.SignatureV2{
+			PubKey: pubKey,
+			Data: &signing.SingleSignatureData{
+				SignMode:  signMode,
+				Signature: nil,
+			},
+			Sequence: accSeqs[i],
+		}
+		pks = append(pks, privKey.PublicKey())
+	}
+
+	// used to set the non_critical_tx_extenaion
+	tx, ok := gen.NewTxBuilder().(authtx.ExtensionOptionsTxBuilder)
+	if !ok {
+		return nil, fmt.Errorf("failed to use ExtendTxBuilder interface: %v", err)
+	}
+	err = tx.SetMsgs(msgs...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set messages: %v", err)
+	}
+
+	tx.SetMemo(memo)
+	tx.SetFeeAmount(feeAmt)
+	tx.SetGasLimit(gas)
+
+	// Log transaction details
+	txObj := tx.GetTx()
+	if txObj == nil {
+		return nil, fmt.Errorf("tx.GetTx() returned nil")
+	}
+
+	// Verify V2AdaptableTx implementation
+	// adaptableTx, ok := txObj.(authsigning.V2AdaptableTx)
+	// if !ok {
+	// 	return nil, fmt.Errorf("tx does not implement V2AdaptableTx, got %T", txObj)
+	// }
+	// txData := adaptableTx.GetSigningTxData()
+
+	var anyMsgs []authenticator.LocalAny
+	for _, in := range msgs {
+		anyMsg, _ := codectypes.NewAnyWithValue(in)
+		anyMsgs = append(anyMsgs, authenticator.LocalAny{
+			TypeURL: anyMsg.TypeUrl,
+			Value:   anyMsg.Value,
+		})
+	}
+
+	msgDigestHash := authenticator.Sha256Msgs(anyMsgs)
+
+	// fmt.Printf("msgDigestHash: %v\n", msgDigestHash)
+	// fmt.Printf("len(signatures): %v\n", len(signatures))
+
+	// 2nd round: add the signatures into the signer
+	for i, p := range signatures {
+		// var pubKey *anypb.Any
+		// signerData := authsigning.SignerData{
+		// 	ChainID:       chainID,
+		// 	AccountNumber: accNums[i],
+		// 	Sequence:      accSeqs[i],
+		// }
+
+		// if cosmosSigs[i].PubKey != nil {
+		// 	cosmosPubkey, err := blst.GetCosmosBlsPubkey(p)
+		// 	// fmt.Printf("len(cosmosPubkey.Bytes()): %v\n", len(cosmosPubkey.Bytes()))
+		// 	anyPk, err := codectypes.NewAnyWithValue(cosmosPubkey)
+		// 	if err != nil {
+		// 		return nil, fmt.Errorf("failed to GetCosmosBlsPubkey %d: %v", i, err)
+		// 	}
+		// 	if err != nil {
+		// 		return nil, fmt.Errorf("failed to encode public key for signer %d: %v", i, err)
+		// 	}
+		// 	// fmt.Printf("len(anyPk.Value): %v\n", len(anyPk.Value))
+		// 	pubKey = &anypb.Any{
+		// 		TypeUrl: anyPk.TypeUrl,
+		// 		Value:   anyPk.Value,
+		// 	}
+		// }
+
+		// txSignerData := txsigning.SignerData{
+		// 	ChainID:       signerData.ChainID,
+		// 	AccountNumber: signerData.AccountNumber,
+		// 	Sequence:      signerData.Sequence,
+		// 	PubKey:        pubKey,
+		// }
+
+		// gets the value to sign
+		// signBytes, err := gen.SignModeHandler().GetSignBytes(ctx, signingv1beta1.SignMode(signMode), txSignerData, txData)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("failed to get sign bytes for signer %d: %v", i, err)
+		// }
+		// if signBytes == nil {
+		// 	return nil, fmt.Errorf("GetSignBytes returned nil for signer %d", i)
+		// }
+
+		sig := p.Sign(msgDigestHash[:])
+		cosmosSigs[i].Data.(*signing.SingleSignatureData).Signature = sig.Marshal()
+		sigsInside = append(sigsInside, sig)
+	}
+
+	authExtSignature, err := gen.MarshalSignatureJSON(cosmosSigs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set messages: %v", err)
+	}
+	// Set the signature details into the TxExtension
+	txExtensionData := &smartaccounttypes.TxExtension{
+		SelectedAuthenticators: []uint64{1},
+		AggAuth: &smartaccounttypes.AgAuthData{
+			Data: authExtSignature,
+		},
+	}
+
+	// set all keys into non critical-extensions
+	extOpts, err := codectypes.NewAnyWithValue(txExtensionData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to txExtensionData NewAnyWithValue: %v", err)
+	}
+	tx.SetNonCriticalExtensionOptions(extOpts)
+
+	// aggregate signatures & pubkey, set into default signature options
+	aggPubkeys := blst.AggregateMultiplePubkeys(pks)
+	aggPubkey, err := blst.GetCosmosBlsPubkeyFromPubkey(aggPubkeys)
+	if err != nil {
+		return nil, fmt.Errorf("failed to blst.GetCosmosBlsPubkeyFromPubkey: %v", err)
+	}
+	aggSig := blst.AggregateSignatures(sigsInside)
+
+	// // fmt.Printf("pks: %v\n", pks[0].Marshal())
+	// // fmt.Printf("aggPubkeys: %v\n", aggPubkeys.Marshal())
+	// // fmt.Printf("aggPubkey: %v\n", aggPubkey)
+	// // fmt.Printf("aggSig: %v\n", aggSig)
+	// // fmt.Printf("len(aggSig.Marshal()): %v\n", len(aggSig.Marshal()))
+
+	// set aggregated key into default signing options
+	err = tx.SetSignatures(signing.SignatureV2{
+		PubKey: aggPubkey,
+		Data: &signing.SingleSignatureData{
+			SignMode:  signMode,
+			Signature: aggSig.Marshal(),
+		},
+		Sequence: accSeqs[0],
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to set final signatures: %v", err)
+	}
+
+	return tx, nil
+}
+
 func MakeTxBuilder(ctx sdk.Context,
 	gen client.TxConfig,
 	msgs []sdk.Msg,
@@ -471,6 +678,24 @@ func GenTx(
 	signatures []cryptotypes.PrivKey,
 ) (sdk.Tx, error) {
 	tx, err := MakeTxBuilder(ctx, gen, msgs, feeAmt, gas, chainID, accNums, accSeqs, signers, signatures)
+	if err != nil {
+		return nil, err
+	}
+	return tx.GetTx(), nil
+}
+
+// GenTx generates a signed mock transaction.
+func GenTxBls12381(
+	ctx sdk.Context,
+	gen client.TxConfig,
+	msgs []sdk.Msg,
+	feeAmt sdk.Coins,
+	gas uint64,
+	chainID string,
+	accNums, accSeqs []uint64,
+	signers, signatures []common.SecretKey,
+) (sdk.Tx, error) {
+	tx, err := MakeTxBuilderBls381(ctx, gen, msgs, feeAmt, gas, chainID, accNums, accSeqs, signers, signatures)
 	if err != nil {
 		return nil, err
 	}

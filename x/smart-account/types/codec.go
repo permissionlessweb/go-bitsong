@@ -7,9 +7,12 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/tx"
 )
 
+var _ AuthenticatorTxOptions = (*TxExtension)(nil) // Compile-time check
+
 // AuthenticatorTxOptions
 type AuthenticatorTxOptions interface {
 	GetSelectedAuthenticators() []uint64
+	GetAggAuth() *AgAuthData
 }
 
 func RegisterCodec(cdc *codec.LegacyAmino) {

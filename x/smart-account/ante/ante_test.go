@@ -178,6 +178,7 @@ func (s *AuthenticatorAnteSuite) TestSignatureVerificationWithAuthenticatorInSto
 	s.Require().NoError(err)
 	s.Require().Equal(id, uint64(2), "Adding authenticator returning incorrect id")
 
+	// MAIN LOGIC FOR FORMING MSG THAT HAS BLS SIGNATUREE
 	tx, _ := GenTx(s.Ctx, s.EncodingConfig.TxConfig, []sdk.Msg{
 		testMsg1,
 		testMsg2,

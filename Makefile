@@ -1,7 +1,8 @@
 #!/usr/bin/make -f
 
-include contrib/devtools/Makefile
+include scripts/devtools/Makefile
 include scripts/makefiles/build.mk
+include scripts/makefiles/release.mk
 include scripts/makefiles/docker.mk
 include scripts/makefiles/e2e.mk
 include scripts/makefiles/format.mk
@@ -24,6 +25,7 @@ help:
 	@echo "  make hl                    Show available docker commands (via Strangelove's Heighliner Tooling)"
 	@echo "  make install               Install Bitsong node binary"
 	@echo "  make localnet              Show available localnet commands"
+	@echo "  make release               Show available release commands"
 	@echo "  make proto                 Show available protobuf commands"
 	@echo "  make test					Show available testing commands"
 	@echo "Run 'make [subcommand]' to see the available commands for each subcommand."
@@ -153,3 +155,69 @@ distclean: clean
 	go-mod-cache draw-deps clean build \
 	build-docker-bitsongdnode localnet-start localnet-stop test-docker test-docker-push \
 	test test-all test-cover
+
+
+###############################################################################
+###                                Release                                  ###
+###############################################################################
+GORELEASER_IMAGE := ghcr.io/goreleaser/goreleaser-cross:v$(GO_MAJOR_MINOR)
+COSMWASM_VERSION := $(shell go list -m github.com/CosmWasm/wasmvm/v2 | sed 's/.* //')
+
+ifdef GITHUB_TOKEN
+ifdef S3_ENDPOINT
+ifdef S3_REGION
+ifdef AWS_ACCESS_KEY_ID
+ifdef AWS_SECRET_ACCESS_KEY
+
+release:
+	docker run \
+		--rm \
+		-e GITHUB_TOKEN=$(GITHUB_TOKEN) \
+		-e COSMWASM_VERSION=$(COSMWASM_VERSION) \
+		-e S3_ENDPOINT=$(S3_ENDPOINT) \
+		-e S3_REGION=$(S3_REGION) \
+		-e AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID) \
+		-e AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY) \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v `pwd`:/go/src/osmosisd \
+		-w /go/src/osmosisd \
+		$(GORELEASER_IMAGE) \
+		release \
+		--clean
+
+else
+release:
+	@echo "Error: GITHUB_TOKEN is not defined. Please define it before running 'make release'."
+endif
+else
+release:
+	@echo "Error: S3_ENDPOINT is not defined. Please define it before running 'make release'."
+endif
+else
+release:
+	@echo "Error: S3_REGION is not defined. Please define it before running 'make release'."
+endif
+else
+release:
+	@echo "Error: AWS_ACCESS_KEY_ID is not defined. Please define it before running 'make release'."
+endif
+else
+release:
+	@echo "Error: AWS_SECRET_ACCESS_KEY is not defined. Please define it before running 'make release'."
+endif
+
+release-test:
+	docker run \
+		--rm \
+		-e COSMWASM_VERSION=$(COSMWASM_VERSION) \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v `pwd`:/go/src/osmosisd \
+		-w /go/src/osmosisd \
+		$(GORELEASER_IMAGE) \
+		release \
+		--snapshot --clean
+
+.PHONY: all build-linux install format lint \
+	go-mod-cache draw-deps clean build build-contract-tests-hooks \
+	test test-all test-build test-cover test-unit test-race benchmark \
+	release release-dry-run release-snapshot update-deps
