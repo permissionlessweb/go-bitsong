@@ -5,8 +5,8 @@ on:
     branches:
       - main
       - master
-    branches-ignore:
-      - "mvp/**"
+    # branches-ignore:
+    #   - "mvp/**"
 
   push:
     tags:
